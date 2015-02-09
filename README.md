@@ -13,7 +13,7 @@ It is possible that a future Google Maps API may offer some or all of these capa
 
 The documentation.txt file contains the API definition of the class, plus some examples.
 
-Attribution: Mike Maschino
+Attribution: Mike Maschino, Google Maps API
 License: Creative Commons 4.0 Attribution International (CC BY 4.0)
     license text: https://creativecommons.org/licenses/by/4.0/legalcode
     license summary: https://creativecommons.org/licenses/by/4.0/
