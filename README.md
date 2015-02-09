@@ -12,3 +12,8 @@ The class does NOT store nor retrieve necessary configuration information (e.g. 
 It is possible that a future Google Maps API may offer some or all of these capabilities.  This class offers an interim capability.  It should be possible to adapt the class to other map frameworks.  That may be a future task.
 
 The documentation.txt file contains the API definition of the class, plus some examples.
+
+Attribution: Mike Maschino
+License: Creative Commons 4.0 Attribution International (CC BY 4.0)
+    license text: https://creativecommons.org/licenses/by/4.0/legalcode
+    license summary: https://creativecommons.org/licenses/by/4.0/
