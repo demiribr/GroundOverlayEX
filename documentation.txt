@@ -1,0 +1,32 @@
+Defines javascript classes:  GroundOverlayEx, GroundOverlayEX_mgr, LatLngQuad
+Classes are extended from google.maps.MVCObject (GroundOverlayEX_mgr, LatLngQuad), 
+        and google.maps.OverlayView (GroundOverlayEx)
+Libraries needed:  Google Maps API, Numeric.js, 
+Libraries included:  Earth API library for Maps v3 (plus adaptions)
+Attribution: Mike Maschino
+License: ???
+
+Concepts of Operation:
+1.  The GroundOverlayEX class can be used "stand-alone" alongside other Google Maps features, including 
+    regular GroundOverlay objects.  A minimal set of constructor information to a GroundOverlayEX object will 
+    display the image like any other GroundOverlay, but also providing cropping, rotation, and/or non-rectangular 
+    transforms that the regular GroundOverlay class cannot provide.
+2.  To gain functionality more like Google Earth, numerous GroundOverlayEx objects can be instanciated and placed
+    under the management of a GroundOverlayEX_mgr object.  The manager will dynamically display or not display
+    images from the GOEXs it manages based upon the current map viewport latitudes and longitudes.  Thus hundreds
+    or thousands of GOEXs could be defined and loaded into the manager, but the map and the browser will only need to
+    handle a limited number of images that should be presently showing given the map position and zoom.  The manager
+    is particular needed for handling a huge quantities of GOEXs, or for handling a large quantity of very large 
+    high-resolution images.  When under management, the GOEXs that are actively displaying are participating in 
+    the Google Maps environment.
+    
+    
+Data types used:  all the google.maps data types (e.g. LatLng, LatLngBounds); a LatLngQuad data type as been added:
+
+object = new LatLngQuad(bottomRight_LatLng, bottomLeft_LatLng, topRight_LatLng, topLeft_LatLng)
+LatLng = .getBottomLeft();
+LatLng = .getBottomRight();
+LatLng = .getTopRight();
+LatLng = .getTopLeft();
+
+Class Constructor and Destructor
