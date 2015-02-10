@@ -4,9 +4,7 @@ Classes are extended from google.maps.MVCObject (GroundOverlayEX_mgr, LatLngQuad
 Libraries needed:  Google Maps API, Numeric.js, 
 Libraries included:  Earth API library for Maps v3 (plus adaptions)
 Attribution: Mike Maschino, Google Maps API
-License: Creative Commons 4.0 Attribution International (CC BY 4.0)
-         license text: https://creativecommons.org/licenses/by/4.0/legalcode
-         license summary: https://creativecommons.org/licenses/by/4.0/
+License: MIT License (see License.txt file)
 
 Concepts of Operation:
 1.  The GroundOverlayEX class can be used "stand-alone" alongside other Google Maps features, including 
