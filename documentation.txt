@@ -1,6 +1,5 @@
 Defines javascript classes:  GroundOverlayEx, GroundOverlayEX_mgr, LatLngQuad
-Classes are extended from google.maps.MVCObject (GroundOverlayEX_mgr, LatLngQuad), 
-        and google.maps.OverlayView (GroundOverlayEx)
+Classes are extended from google.maps.MVCObject (GroundOverlayEX_mgr, LatLngQuad), and google.maps.OverlayView (GroundOverlayEx)
 Libraries needed:  Google Maps API, Numeric.js, 
 Libraries included:  Earth API library for Maps v3 (plus adaptions)
 Attribution: Mike Maschino, Google Maps API
@@ -19,24 +18,14 @@ Concepts of Operation:
     is particular needed for handling a huge quantities of GOEXs, or for handling a large quantity of very large 
     high-resolution images.  When under management, the GOEXs that are actively displaying are participating in 
     the Google Maps environment.
+3.  A single instance of the GroundOverlayEX class can be used for a javascript-based geographic-related image editing: placement, size, rotation, transformation
     
-    
-Data types used:  all the google.maps data types (e.g. LatLng, LatLngBounds); a LatLngQuad data type as been added:
+Data types used:  all the google.maps data types (e.g. LatLng, LatLngBounds)
+New data types:	  LatLngQuad, zoomArray, zoomEntryZoom, zoomEntryAlt_ft, zoomEntryAlt_m
 
-object = new LatLngQuad(bottomRight_LatLng, bottomLeft_LatLng, topRight_LatLng, topLeft_LatLng)
-LatLng = .getBottomLeft();
-LatLng = .getBottomRight();
-LatLng = .getTopRight();
-LatLng = .getTopLeft();
-
-Class Constructor and Destructor
-
-
-
-
-
-
-
+It is strongly suggested to understand the KML definition of GroundOverlay (plus Google's extensions);
+this class provides nearly all the capabilities as the KML GroundOverlay object
+https://developers.google.com/kml/documentation/kmlreference#groundoverlay
 
 ================
 LatLngQuad class
@@ -46,14 +35,17 @@ ground overlay images.  It defines the geographical coordinates of the original 
 a specific order:  Bottom-Left, Bottom-Right, Top-Right, and Top-Left.  Note that for example Bottom-Left does not
 correspond to South-West; the geographic coordinates may rotate, resize, and non-rectangularly distort the image.
 
-Constructor:
+Extends from class: google.maps.MVCObject	
+Constructor:					Returns			  Description
+------------					-------			  -----------
 LatLngQuad(google.maps.LatLng_Bottom_Left, 
            google.maps.LatLng_Bottom_Right, 
            google.maps.LatLng_Top_Right, 
-           google.maps.LatLng_Top_Left)         Object
+           google.maps.LatLng_Top_Left)         Object			  Constructor
 
 Methods:
-.destroy()                                      none                      releases all internally stored objects
+--------
+.destroy()                                      none                      release all internally stored objects
 .isEmpty()                                      Boolean                   true=the object had a properly passed parameters
 .getBottomLeft()                                google.maps.LatLng        returns what was passed in the constructor
 .getBottomRight()                               google.maps.LatLng        returns what was passed in the constructor
@@ -70,5 +62,377 @@ Methods:
 .toString()                                     String                    returns a human-readable string of the four corner geographic coordinates in constructor order
 .toUrlValue(Number:precision)                   String                    returns a sequence of eight comma-delimited values of the latitudes and longitudes of the corners in constructor order; precision if specified will limit the factional portion to only the indicated number of digits
 
+Code Example:
+-------------
+var bl = new google.maps.LatLng(..., ...);
+var br = new google.maps.LatLng(..., ...);
+var tr = new google.maps.LatLng(..., ...);
+var tl = new google.maps.LatLng(..., ...);
+var llq = new google.maps.LatLngQuad(bl, br, tr, tl);
 
 
+===============
+zoomArray class
+===============
+This class stores a series of zoom ranges with corresponding image URL to display.  Alternatively, Google Earth camera viewpoint altitudes in either feet or meters above
+sea level can specified.  Although these types of entries can be intermixed, this is not recommended.  whichever entry that first matches the Google Maps V3 zoom level
+will be selected; other possibly relevent entries will be ignored.
+
+Extends from class: google.maps.MVCObject	
+Constructor:					Returns			Description
+------------					-------			-----------
+ZoomArray();					Object			Constructor
+
+Methods:
+--------
+.destroy()					none			release all internally stored objects
+.length()					Number			returns quantity of entries that have been added
+.addZoomEntry(zoomEntry*:entryToAdd)		none			add a new zoomEntry* to the end of the array
+.prependZoomEntry(zoomEntry*:entryToInsert)	none			add a new zoomEntry* to the beginning of the array
+.getUrl(Number:indexNo)				String			returns the URL of the passed index number
+.whichIndexPerUrl(String:Url)			Number			returns the index number of which first entry has the specified URL; -1=no such entry found
+.whichIndexPerZoom(Number:zoom)			Number			returns the index number of which first entry is applicable for the specified zoom level number; -1=no such entry found
+
+==================
+zoomEntry* classes
+==================
+This class specifies a range of zoom levels or altitudes with an image URL.
+
+Extends from class: google.maps.MVCObject
+Constructors:												Returns
+-------------												-------
+zoomEntryZoom(Number:lowerZoom, Number:higherZoom, String:imageURL)					Object
+zoomEntryAlt_ft(Number:lowerAltitude_feet, Number:higherAltitude_feet, String:imageURL)			Object
+zoomEntryAlt_m(Number:lowerAltitude_meters, Number:higherAltitude_meters, String:imageURL)		Object
+
+Methods:
+--------
+none externally available
+
+Code Example:
+-------------
+var za = new ZoomArray();
+var ze1 = new ZoomEntryZoom(0, 8, "http://somewhere.com/image1.jpg");
+za.addZoomEntry(ze1);
+var ze2 = new ZoomEntryZoom(9, 22, "http://somewhere.com/image1_highrez.jpg");
+za.addZoomEntry(ze2);
+
+
+=====================
+GroundOverlayEX class
+=====================
+This class displays a rectangular (with rotation) or non-rectangular image overlay on the map.  The image can also be pre-cropped.  This GroundOverlay class implements
+most of the capabilities of a KML-defined GroundOverlay.  However, level-of-detail works differently, and this GroundOverlayEx class can manage multiple versions of 
+the same image at different proportional sizes and resolutions.
+
+Extends from class: google.maps.OverlayView
+Constructor:						Returns
+------------						-------
+GroundOverlayEX(String:url, 
+		google.maps.LatLngBounds:latlngBox, 
+		Object:GroundOverlayEX_options)		Object
+
+Passed Parameter Notes:
+-----------------------
+  url:  should always be passed even if is one of the URLs in a ZoomArray; if cropping, then this should be the URL for the image which the cropping parameters apply to
+  latlngBox:  for a LatLngBox ground overlay, a LatLngBounds must be provided; for a LatLngQuad ground overlay, this should be null ... if both a LatLngQuad and a LatLngBounds are provided, the LatLngBounds will be ignored
+  GroundOverlayEX_options:			Default	Description
+  ------------------------			-------	-----------
+	clickable: Boolean,			false	true=pass-thru various click and mouse events for the application to listen to
+	map: google.maps.Map,			null	auto-loads the google.maps.MAP; if not specified then the application must invoke the .setMap() method prior to using the GroundOverlayEX object
+	opacity: Number,			1	number ranging from zero (transparent) to one (fully opaque) to be applied to the displayed image
+	rotate: Number,				0	specifies the rotation to be applied to the image only in latlngBounds mode; ignored if a LatLngQuad is specified; degrees counter-clockwise
+	cropOrigImgWidth: Number,		0	if specified, this must be the original image width on which the crop values below are based; see editing notes below
+	cropOrigImgHeight: Number,		0	if specified, this must be the original image height on which the crop values below are based; see editing notes below
+	cropFromLeft: Number,			0	if specified, first crop the image from the left the number of indicated pixels; see editing notes below
+	cropToWidth: Number,			0	if specified, second crop the resultant width to the indicated pixels; see editing notes below
+	cropFromBottom: Number,			0	if specified, first crop the image from the bottom the number of indicated pixels; see editing notes below
+	cropToHeight: Number,			0	if specified, second crop the resultant height to the indicated pixels; see editing notes below
+	latlngQuad: LatLngQuad,			null	specifies the LatLngQuad to use to display the GroundOverlayEX images; overrides any latlngBox passed parameter
+	id: String,				""	optional application-defined identity string for the GroundOverlayEX object; only used by the application
+	displayText: String,			""	optional string of information associated with the groundoverlay; can be used for a google.maps.InfoWindow; only used by the application
+	zoomArray: ZoomArray,			null	specifies a set of image URLs to display at different map zoom levels; if not specified then the url passed parameter will be used at all zoom levels
+	regionBounds: google.maps.LatLngBounds,	null	specifies a region bounds if which is visible in any portion on the map viewport, the GroundOverlayEX will load the proper image for the zoom and display it
+	drawOrder: Number,			0	specifies a layered drawing order number in cases where ground overlay images overlap; if not specified then zero is used
+	zIndexBase: Number,			1000	the drawOrder is added to this zIndexBase for layering in the browser; if not specified then a default zIndexBase is used
+	zIndex: Number,				0	a specific zIndex to use instead of zIndexBase+drawOrder; if specified then the other two are ignored
+	editable: Boolean,			false	true=potentially allow the passed parameter url image to be edited (zoomArray URLs are ignored); false=no editing allowed
+	doEditing: Boolean			false	true=activate editing of the displayed image; shift-right-clicking on the image will also toggle editing; see editing section below
+
+Properties:			Returns				Description
+-----------			-------				-----------
+.position			LatLng				a fast and approximate center LatLng suitable for InfoWindows or other Google Map uses
+
+Standard Methods:
+-----------------						
+.getBounds()			google.maps.LatLngBounds	returns the current LatLngBounds for the image; null=none available; after editing, this will reflect the new LatLngBounds of the edited image (if .displayMode() == 'B')
+.getMap()			google.maps.Map			(see the Google Maps API V3 definitions for a GroundOverlay)
+.getUrl()			String				returns the url passed parameter (and not any of the zoomArray URLs)
+.setMap(google.maps.Map)	none				note: this MUST be set before the GroundOverlayEX object will perform any actions
+.getOpacity()			Number				(see the Google Maps API V3 definitions for a GroundOverlay)
+.setOpacity(Number)		none				(see the Google Maps API V3 definitions for a GroundOverlay)
+
+Map Framework methods:
+----------------------						
+.onAdd()			none				(see the Google Maps API V3 definitions for an OverlayView)
+.draw()				none				ditto
+.onRemove()			none				ditto
+.getProjection()		google.maps.MapCanvasProjection ditto
+.getPanes()			google.maps.MapPanes		ditto
+
+Extended Methods:
+-----------------
+.destroy()			none				completely destroy the object's internal data; object cannot be re-activated using .setMap(map)
+.getId()			String				gets the application-defined id for the Object; the Object only uses this to display any errors on the console log
+.getDisplayText()		String				gets the application-defined string for the Object; the Object does not use this string at all
+.setDisplayText(String)		none				sets the application-defined string for the Object; the Object does not use this string at all
+.getPosition()			google.maps.LatLng		returns a fast and approximate center LatLng suitable for InfoWindows or other Google Map uses
+.getCenter()			google.maps.LatLng		returns a center LatLng for the image, including computed center of a non-rectangular image; after editing, this will reflect the new center of the edited image
+.getDisplayMode()		String				returns which geographic coordinates are being used: 'B'=LatLngBounds, 'Q'=LatLngQuad
+.getBoundsOriginal()		google.maps.LatLngBounds	returns the LatLngBounds which was passed in the constructor; could be null
+.getLatLngType()		String				returns whether the LatLngQuad appears to be rectangular or non-rectangular: 'R'=rectangular, 'N'=non-rectangular, 'u'=known or not using LatLngQuad
+.getLatLngQuad()		LatLngQuad			returns the current LatLngQuad for the image; null=none available; after editing, this will reflect the new LatLngQuad of the edited image (if .displayMode() == 'Q')
+.getLatLngQuadOriginal()	LatLngQuad			returns the LatLngQuad which was passed in the constructor; could be null
+.getRegionBounds()		google.maps.LatLngBounds	returns the LatLngQuad for the region bounds in-use by the GroundOverlayEX; could be the region provided in the constructor; or if not provided then it will have been computed by the GroundOverlayEX class
+.getRotation()			Number				returns the rotation applied to the image only in latlngBounds mode
+.setRotation(Number)		none				sets the rotation to be applied to the image only in latlngBounds mode; ignored if a LatLngQuad is specified; degrees counter-clockwise
+.getDrawOrder()			Number				returns the current draw order value
+.setDrawOrder(Number)		none				sets a draw order value, and image will change zIndex order; must be >= 0
+.getZindexBase()		Number				returns the application defined zIndexBase; 0=none set and the internal default is being used
+.setZindexBase(Number)		none				set the application defined zIndexBase, and image will change zIndex order; must be > 0; 0 = use default
+.getZindex()			Number				get the override zIndex value; if > 0 then drawOrder and ZindexBase are ignored
+.setZindex(Number)		none				set the override zIndex value, and image will change zIndex order; if > 0 then drawOrder and ZindexBase are ignored
+
+Editing Methods:
+-----------------
+.getEditable()			Boolean				true=potentially allow the passed parameter url image to be edited (zoomArray URLs are ignored); false=no editing allowed
+.setEditable(Boolean)		none				true=potentially allow the passed parameter url image to be edited (zoomArray URLs are ignored); false=no editing allowed
+.getDoEditing()			Boolean				true=activate editing of the displayed image; shift-right-clicking on the image will also toggle editing; see editing section below
+.setDoEditing(Boolean)		none				true=activate editing of the displayed image; shift-right-clicking on the image will also toggle editing; see editing section below
+.setCenter(google.maps.LatLng)	none				shifts the image center to the specified latitude and longitude; this method is ignored if not in editing mode
+
+
+Display Mode Notes:
+-------------------
+Just like the KML defintion of a GroundOverlay, there are two possible display modes in the GroundOverlayEX.  Only one may be active.  If information is provided
+in the constructor for both a LatLngQuad and a LatLngBounds, the LatLngBounds and rotation will be ignored.  During optional editing, it is possible to change a
+LatLngBounds mode into a LatLngQuad mode by doing corner dragging; this change cannot be reversed.
+Mode		.displayMode() value	Description
+----		--------------------	-----------
+LatLngBounds	B			A rectangle where the top-right of the image gets placed by the north-east bound, and the bottom-left of the image
+					gets placed by the south-west bound.  That placement may resize the images width and height, even non-proportionally.
+					Finally the image may optionally be rotated about its center.
+LatLngQuad	Q			Latitude,Longitude pairs for each of the four corners of the image.  These pairs can resize, rotate, skew, and
+					transform the image into non-rectangular shapes (suitable for correcting tilt distortion in the image).  The order of
+					the pairs must be for the following corners in order:  Bottom-left, Bottom-right, Top-right, Top-left
+
+
+Internal Order-of-Operation Notes:
+----------------------------------
+A GroundOverlayEX object passes through various stages and states depending on where it is placed in relation to the currently viewed map viewport
+	1.  GroundOverlayEX Object is constructed; missing information such as RegionBounds is automatically created
+	2.  The Object is added to the Google Map
+	3.  The Object assesses whether its RegionBounds is viewable:
+		if not, then the Object waits until it is visible
+	4.  The Object assesses the current map zoom level, and chooses the appropriate image
+	5.  If the needed image is not yet loaded, the Object initiates download of the image then waits
+	6.  The now-downloaded image is cropped if supposed to be
+	7.  If in LatLngBounds mode, the image is rotated; if in LatLngQuad mode, the image is transformed
+	8.  The image is added to the Google Map and now gets displayed
+	9.  The Object waits and listens to the map
+	10. If the map viewport changes for any reason, the Object assesses whether its RegionBounds are still in display view:
+		If out-of-view, the image is removed from the Google Map but remains loaded, then go to step 9 and wait
+		if in-view, the Object assesses whether the zoom level changed or not:
+			if zoom is the same, then nothing need be done; go to step 9 and wait
+			if zoom has changed, then go to step 4 above
+This order of operation helps reduce burden on the Google Map when hundreds or thousands of GroundOverlayEX objects are instanciated.  Only those images that
+actively need display are placed into the map's management.  If the GroundOverlayEX Object has images that are loaded but not-displayed, after a period of
+time of non-display the Object will also unload the images, which reduces memory and burden on the browser.  These features are provided to ensure the
+Google Map remains quick and responsive for the average end-user on an average (non-mobile) computer.  
+
+The application developer has the option to widen the passed RegionBounds such that it is larger than the image's natural LatLngBounds or 
+LatLngQuad's BoundingBox.  THis will have the effect of pre-loading and pre-displaying images that are very near to the viewport and very likely to be 
+displayed soon by the end-user.  Use of the optional GroundOverlayEX_mgr class can provide a more effective means to accomplish that for a large number
+of GroundOverlayEX objects.
+
+
+Cropping Notes:
+---------------
+Image pre-cropping is done in a similar manner as the Icon <gx:x>,<gx:y>,<gx:w>,<gx:h> subfields in the KML specification.  Note the KML defines an image origin 
+as the *Bottom-Left* of the image; browsers use the Top-Left.  Hence the crop parameters for horizontal are defined as "cropFromBottom" and "cropToHeight".
+
+The two additional yet optional passed cropping parameters "cropOrigImgWidth" and "cropOrigImgHeight" are available to help reduce broswer computing load in 
+certain circumstances.  The code snippet below shows the scenario where this is useful:
+
+Code Example:
+	(assume variables 'map' and 'bnds' have been properly defined, that the map is currently at zoom level 5, 
+	 that image1.jpg is 512x512, and image1_highrez.jpg is 512000x512000)
+
+	var za = new ZoomArray();
+	var ze1 = new ZoomEntryZoom(0, 8, "http://somewhere.com/image1.jpg");
+	za.addZoomEntry(ze1);
+	var ze2 = new ZoomEntryZoom(9, 22, "http://somewhere.com/image1_highrez.jpg");
+	za.addZoomEntry(ze2);
+	var goex = new GroundOverlayEX("http://somewhere.com/image1_highrez.jpg", bnds, { zoomArray: za, map: map, cropFromLeft: 100000 });
+
+
+Following the Internal Order-of-Operation, step 4 chooses the much smaller "http://somewhere.com/image1.jpg".  However, at step 6, the passed crop 
+parameters are for the much larger "http://somewhere.com/image1_highrez.jpg".  But the GroundOverlayEX object does not yet know that larger image's width and 
+height, and cannot therefore proportionally adjust the crop parameter down to the smaller image's size.  The GroundOverlayEX object is forced to download BOTH 
+images (and wait till BOTH get completely downloaded), then it has sufficient information about the larger image to crop the smaller image.  Although this is 
+not a big deal for one individual GroundOverlayEX object, if there are hundreds or thousands then alot of extra downloading and wasted time is spent, when the 
+Object was designed to attempt to minimize that.
+
+So for optimal performance, when using both a ZoomArray and Cropping for a GroundOverlayEX object, it is optimal to also provide the "cropOrigImgWidth" and "cropOrigImgHeight".
+Alot less image downloads will occur.  If a GroundOverlayEX object is cropping but will not be using a ZoomArray, providing or not providing those two parameters 
+does not impact performance either way.
+
+
+RegionBounds and GroundOverlayEX_mgr Notes:
+-------------------------------------------
+As indicated above, RegionBOunds is used in step 3 and step 10 of the Internal Order-of-Operation.  Since this bounds is very important to the Object, if it is 
+not passed in the constructor, then the Object computes it as follows:
+
+Mode		.displayMode() value	If RegionBounds was not provided:
+----		--------------------	---------------------------------
+LatLngBounds	B			RegionBounds is set equal to passed parameter LatLngBounds
+LatLngQuad	Q			RegionBounds is set equal to passed parameter LatLngQuad.getBoundsBox()
+
+The default computation of the region ensures that the moment it becomes visible on the map viewport, the proper image is indeed loaded and displayed.  However,
+this could cause pauses when zooming and panning as especially large images from slow servers are downloaded.  The application developer should choose to pass
+an expanded RegionBounds than those defaults above.  Doing so would cause images that are near to the viewport to be pre-download and pre-displayed even 
+though still off-screen.  This could of-course impact performance, so use that option with care.
+
+As has been mentioned (and will be detailed below), an optional GroundOverlayEX_mgr class is available.  This class allows the application developer to place
+all the GroundOverlayEX objects into the manager object.  One task of the manager object is to add and remove the GroundOverlayEX objects from the map framework
+itself, which is useful when one may have thousands of defined GroundOverlayEX objects, yet do not want to over-burden the map framework with so many 
+feature objects.  A portion of that functionality is to also evaluate which GroundOverlayEX objects are *near* the viewport, yet are off-screen, but should be 
+pre-added to the map and pre-loaded to provide a smoother end-user experience.  Each GroundOverlayEX's RegionBounds are used in that evaluation, but against wider
+viewport contexts.
+
+The end result is that pre-loading can be achieved with the manager class without having to compute widened RegionBounds, and indeed the default internally 
+computed RegionBounds can be used, but still have controlled pre-loading capabilities.
+
+
+Editing Notes:
+--------------
+The editing feature should not be enabled for general purpose end-user display maps.  The editing feature should only be used for human manual image geo-location
+web-applications.  With the editing feature enabled and activated, one can reposition the GroundOverlayEX's image on the map, resize its edges proportionally or 
+non-proportionally, rotate the image, externally adjust transparency, and drag corners to create a non-rectangular LatLngQuad.
+
+Editing features that are enabled differ whether the display mode is LatLngBounds or LatLngQuad:
+	Mode		Dragging	Rotating	Edge-resizing	Corner-resizing
+	----		--------	--------	-------------	---------------
+	LatLngBound	Yes		Yes		Yes		Yes (dragging a corner will auto-convert the mode to LatLngQuad)
+	LatLngQuad	Yes		No		No		Yes
+
+The web-application would create a GroundOverlayEX object with usually just the image URL, and create a LatLngBounds object with that is a couple of 1/10s of a span 
+of a known latitude and longitude that is on the image.  The .setCenter(LatLng) method can only be used when editing is allowed, and will automatically move the 
+image's center to that specified latitude and longitude after the image is positioned on the screen via the LatLngBounds or LatLngQuad.
+
+During editing, callbacks to the application can allow the application to extract current placement information from the Object while editing is in progress.  
+When editing is finished, a final callback to the application allows it to extract final geo-location information.  The applicable methods to utilize are:
+	Method			Use for:
+	------			--------
+	.getDisplayMode()	determining whether to get primary geo-location information from .getBounds() or .getLatLngQuad()
+	.getCenter()		getting the new image center latitude and longitude
+	.getBounds()		only available when in LatLngBounds display mode; will return null when in LatLngQuad mode
+	.getRotation()		getting the new rotation [only applicable in conjunction with .getBounds()]
+	.getLatLngQuad()	this information is available in BOTH LatLngQuad and LatLngBounds mode during editing; when in LatLngBounds mode, these corner
+				latitudes and longitudes are usually quite inaccurate unless the image's camera was near perfect-vertical with no tilt distortion
+				on the image
+	.getLatLngType()	possibly helpful information about whether the LatLngQuad is rectangular or non-rectangular
+
+
+Events:
+-------
+The GroundOverlayEX class itself captures selected map events and events concerning its displayed image.  This is especially true during editing mode.
+However, the application developer can listen to events from the GroundOverlayEX object itself.  If the passed parameter "clickable" is set to true,
+the object will pass-thru and trigger the following events when they occur (including the MouseEvent data).  Note the use of addListener instead of
+addDomListener: the GroundOverlayEX object itself is not subject to DOM events (its not "drawn" onto the web page; just the internally stored images are "drawn" 
+onto the web page).  The GroundOverlayEx object is provided also as a passed parameter (meaning a "var that=this;" is not necessary for the handler).
+	click, dblclick, rightclick, mouseover, mouseout, mousedown, mouseup
+
+Code example:
+	:
+	var goex = new GroundOverlayEX( ..., ..., { ..., clickable: true});
+	var listener = google.maps.event.addListener(goex, "rightclick", function(mouseEvent, thatgoex) { ... });
+	
+
+During the editing process, even with the clickable passed parameter set to true, the above events will NOT BE PASSED THROUGH!
+However the following events are triggered (and the "clickable" passed parameter need not be present).  The GroundOverlayEx object is provided 
+as a passed parameter (meaning a "var that=this;" is not necessary for the handler).
+	editing_started		= editing has been initiated (either by the end-user doing a shift-rightclick or by .setDoEditing(true) method)
+	position_changing 	= the image's center is being moved on the map (the application will get a stream of events)
+	shape_changing 		= the image's edges, corners, or rotation are being changed on the map (the application will get a stream of events)
+	editing_done		= editing has completed (either the end-user did another shift-rightclick or by .setDoEditing(false) method)
+
+
+Code example:
+	var goex = new GroundOverlayEX( ..., ..., { ..., editable: true, doEditing: true});
+	var listener1 = google.maps.event.addListener(goex, "position_changing", function(thatgoex) { ... });
+	var listener2 = google.maps.event.addListener(goex, "shape_changing", function(thatgoex) { ... });
+
+
+=========================
+GroundOverlayEX_mgr class
+=========================
+This class functions as a high level manager for a large quantity of GroundOverlayEX objects.  The manager only places those GroundOverlayEX objects onto the
+Google Map framework that are nearby or within the current map viewport.  It can also do mass changes to all GroundOverlayEX objects that it is managing, such
+as changing the Opacity of all the GroundOverlayEX object.
+
+Extends from class: google.maps.MVCObject
+Constructor:									Returns
+------------									-------
+GroundOverlayEX_mgr(google.maps.Map:map, GroundOverlayEX_mgr_options)		Object
+
+Passed Parameter Notes:
+-----------------------
+  map:  google.maps.Map to be used for all the managed GroundOverlayEXs
+  GroundOverlayEX_mgr_options:		Default	Description
+  ----------------------------		-------	-----------
+	placementRegion: String,	zoom2x	see notes below on expanded region bounds; acceptable values: zoom2x
+	preloadRegion: Number		0	see notes below on expanded region bounds; acceptable values: 0=off to 1=placementRegion
+
+Methods:			Returns			Description
+--------			-------			-----------
+.getMap()			google.maps.Map		(see the Google Maps API V3 definitions for a GroundOverlay)
+.addGOEX(GroundOverlayEX)	Boolean			true=add was successful; currently the only reason for rejection is that the GroundOverlayEX does not have a RegionBounds defined or calculated
+.setAllOpacity(Number)		none			changes the opacity of every GroundOverlayEX object being managed
+.getPlacementRegion)		String			see notes below on expanded region bounds; acceptable values: zoom2x
+.setPlacementRegion(String)	none			see notes below on expanded region bounds; acceptable values: zoom2x
+.getPreloadRegion()		Number			see notes below on expanded region bounds; acceptable values: 0=off to 1=placementRegion
+.setPreloadRegion(Number)	none			see notes below on expanded region bounds; acceptable values: 0=off to 1=placementRegion
+
+
+Expanded RegionBounds Notes
+---------------------------
+The manager's primary function is to unload and load GroundOverlayEX's from the Google map.  This is really only necessary for large or huge numbers of 
+GroundOverlayEX objects to keep the Google Maps framework from getting overloaded and unresponsive.  The manager does this by defining a "super viewport" 
+based upon the map's currently displayed viewport.  All GroundOverlayEX objects with any portion of their RegionBounds inside this super viewport 
+are loaded into the Google Map (meaning their .setMap(map) is called).  All other GroundOverlayEX objects are removed from the map (meaning a .setMap(null) 
+is called).  That super viewport is called the "placementRegion".
+
+The manager currently offers one definition for that placement region named "zoom2x".  The placement region is what would be showing on the map if the zoom 
+was reduced one level (which in Google Maps means two times width and height of what is being shown).  So effectively the manager keeps within Google Maps
+all those GroundOverlayEX objects that would be visible if the end-user zoomed out one level.
+
+Each GroundOverlayEX object that IS loaded into the Google Map makes its own assessment of whether to load the proper image for the zoom and display it based upon 
+its local decision about its RegionBounds and the current map viewport.  So normally, all those extra GroundOverlayEX objects that got loaded into the surrounding 
+off-screen space remain idle and in particular do not attempt to pre-load their images.
+
+Using the manager, the application developer can also activate the "preloadRegion".  This region is typically between the "placementRegion" and the current map 
+viewport region.  All GroundOverlayEX objects that are inside the preloadRegion (but are not yet visible on the viewport) are instructed by the manager to preload 
+their proper image for the zoom, but not yet display it.  Then when the end-user drags or pans the map, the GroundOverlayEX objects that suddenly come into view
+already have downloaded their images, and instantaneously display them.
+
+The preloadRegion is a value between 0 and 1.  0 means no preloadRegion.  1 means the preloadRegion is the same size as the placementRegion.  values in-between are
+mid-points between the current map viewport size and the preloadRegion.  For example, .5 means the preloadRegion is half-way between the map viewport and the 
+placementRegion; .25 means just quarter-way from the viewport to the placementRegion, etc.
+
+
+Code example:
+	var goexMgr = new GroundOverlayEX_mgr(map);
+	:
+	var goex = new GroundOverlayEX( ..., ..., { ...});
+	var success = goexMgr.addGoes(goex);
