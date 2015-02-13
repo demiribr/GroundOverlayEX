@@ -30,3 +30,45 @@ LatLng = .getTopRight();
 LatLng = .getTopLeft();
 
 Class Constructor and Destructor
+
+
+
+
+
+
+
+
+================
+LatLngQuad class
+================
+A LatLngQuad constructs a non-rectangular convex quadrilateral in geographical coordinates for tilt distorted 
+ground overlay images.  It defines the geographical coordinates of the original four corners of an image in 
+a specific order:  Bottom-Left, Bottom-Right, Top-Right, and Top-Left.  Note that for example Bottom-Left does not
+correspond to South-West; the geographic coordinates may rotate, resize, and non-rectangularly distort the image.
+
+Constructor:
+LatLngQuad(google.maps.LatLng_Bottom_Left, 
+           google.maps.LatLng_Bottom_Right, 
+           google.maps.LatLng_Top_Right, 
+           google.maps.LatLng_Top_Left)         Object
+
+Methods:
+.destroy()                                      none                      releases all internally stored objects
+.isEmpty()                                      Boolean                   true=the object had a properly passed parameters
+.getBottomLeft()                                google.maps.LatLng        returns what was passed in the constructor
+.getBottomRight()                               google.maps.LatLng        returns what was passed in the constructor
+.getTopRight()                                  google.maps.LatLng        returns what was passed in the constructor
+.getTopLeft()                                   google.maps.LatLng        returns what was passed in the constructor
+.getNorthMost()                                 Number                    returns the northmost latitude from all four corners; this is the maximum of the latitudes
+.getSouthMost()                                 Number                    returns the southmost latitude from all four corners; this is the minimum of the latitudes
+.getEastMost()                                  Number                    returns the eastmost longitude from all four corners; this is the maximum of the longitudes
+.getWestMost()                                  Number                    returns the westmost longitude from all four corners; this is the minimum of the longitudes
+.getBoundsBox()                                 google.maps.LatLngBounds  returns a bounds composed of the {southmost,westmost} and the {northmost,eastmost}
+.toSpan()                                       google.maps.LatLng        returns the linear size in geographic coordinates of the BoundsBox
+.getCenter()                                    google.maps.LatLng        returns the center latitude and longitude of the BoundsBox
+.inBoundsBox(google.maps.LatLng)                Boolean                   true=the passed LatLng is inside the BoundsBox (suitable only for Region checking)
+.toString()                                     String                    returns a human-readable string of the four corner geographic coordinates in constructor order
+.toUrlValue(Number:precision)                   String                    returns a sequence of eight comma-delimited values of the latitudes and longitudes of the corners in constructor order; precision if specified will limit the factional portion to only the indicated number of digits
+
+
+
