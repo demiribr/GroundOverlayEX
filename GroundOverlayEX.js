@@ -3,7 +3,7 @@
 //////////////////////////////////////////////////////////////////////////////
 /*
 Extended GroundOverlay class for Google Maps API V3
-Version: 1.0
+Version: 1.1
 
 Source Respository: https://github.com/azmikemm/GroundOverlayEX
 Documentation: see "documentation.txt" in github repository for full API description
@@ -1354,8 +1354,30 @@ GroundOverlayEX_mgr.prototype.addGOEX = function(pGOEX) {
 	this.indexOfMapEnabled_[c] = false;
 	this.indexOfLoadRecommend_[c] = false;
 
-	this.performAnAssessment_(c);
+	this.performAnAssessment_(c, true);
 	return true;
+}
+GroundOverlayEX_mgr.prototype['startOfBulkload'] = GroundOverlayEX_mgr.prototype.startOfBulkload;
+GroundOverlayEX_mgr.prototype.startOfBulkload = function(pGOEX) {
+	// nothing needed here at this time
+}
+GroundOverlayEX_mgr.prototype['addGOEXbulkload'] = GroundOverlayEX_mgr.prototype.addGOEXbulkload;
+GroundOverlayEX_mgr.prototype.addGOEXbulkload = function(pGOEX) {
+	// add another GroundOverlayEX object into management
+	if (pGOEX.regionBounds_ == null) return false;
+
+	var c = this.indexOfGOEXs_.length;
+	this.indexOfGOEXs_[c] = pGOEX;
+	pGOEX.manager_ = this;
+	this.indexOfMapEnabled_[c] = false;
+	this.indexOfLoadRecommend_[c] = false;
+
+	this.performAnAssessment_(c, false);
+	return true;
+}
+GroundOverlayEX_mgr.prototype['endOfBulkload'] = GroundOverlayEX_mgr.prototype.endOfBulkload;
+GroundOverlayEX_mgr.prototype.endOfBulkload = function(pGOEX) {
+	this.assessAll_();
 }
 GroundOverlayEX_mgr.prototype['setAllOpacity'] = GroundOverlayEX_mgr.prototype.setAllOpacity;
 GroundOverlayEX_mgr.prototype.setAllOpacity = function(pOpacity) {
@@ -1439,21 +1461,23 @@ GroundOverlayEX_mgr.prototype.getLargerMapBounds_ = function(pIncreaseBy) {
 }
 GroundOverlayEX_mgr.prototype.assessAll_ = function() {
 	for (var i in this.indexOfGOEXs_) {
-		this.performAnAssessment_(i);
+		this.performAnAssessment_(i, true);
 	}	
 }
-GroundOverlayEX_mgr.prototype.performAnAssessment_ = function(pIndexNo) {
+GroundOverlayEX_mgr.prototype.performAnAssessment_ = function(pIndexNo, pDoPreloadRegion) {
 	if (this.mapBoundsPlace_.intersects(this.indexOfGOEXs_[pIndexNo].regionBounds_)) {
 		// GOEX should be placed on the map
 		if (!this.indexOfMapEnabled_[pIndexNo]) {
 			this.indexOfGOEXs_[pIndexNo].setMap(this.map_);
 			this.indexOfMapEnabled_[pIndexNo] = true;
 		}
-		if (this.mapBoundsLoad_.intersects(this.indexOfGOEXs_[pIndexNo].regionBounds_)) {
-			// GOEX should be told to pre-load its image
-			if (!this.indexOfLoadRecommend_[pIndexNo]) {
-				this.indexOfGOEXs_[pIndexNo].mgrRecommendLoadImage();
-				this.indexOfLoadRecommend_[pIndexNo] = true;
+		if (pDoPreloadRegion) {
+			if (this.mapBoundsLoad_.intersects(this.indexOfGOEXs_[pIndexNo].regionBounds_)) {
+				// GOEX should be told to pre-load its image
+				if (!this.indexOfLoadRecommend_[pIndexNo]) {
+					this.indexOfGOEXs_[pIndexNo].mgrRecommendLoadImage();
+					this.indexOfLoadRecommend_[pIndexNo] = true;
+				}
 			}
 		}
 	} else {
