@@ -1,7 +1,7 @@
 Defines javascript classes:  GroundOverlayEx, GroundOverlayEX_mgr, LatLngQuad, ZoomArray, ZoomEntryZoom, ZoomEntryAlt_ft, ZoomEntryAlt_m
 Classes are extended from google.maps.OverlayView (GroundOverlayEx) and google.maps.MVCObject (all the rest)
 Libraries needed:  (javascript) Google Maps API V3, Numeric.js
-Version 1.0
+Version 1.1
 Attribution: Mike Maschino, Google Maps API
 License: MIT License (see License.txt file)
 
@@ -354,18 +354,21 @@ Passed Parameter Notes:
 	placementRegion: String,	zoom2x	see notes below on expanded region bounds; acceptable values: zoom2x
 	preloadRegion: Number		0	see notes below on expanded region bounds; acceptable values: 0=off to 1=placementRegion
 
-Methods:			Returns			Description
---------			-------			-----------
-.getMap()			google.maps.Map		(see the Google Maps API V3 definitions for a GroundOverlay)
-.addGOEX(GroundOverlayEX)	Boolean			true=add was successful; currently the only reason for rejection is that the GroundOverlayEX does not have a RegionBounds defined or calculated
-.setAllOpacity(Number)		none			changes the opacity of every GroundOverlayEX object being managed
-.getPlacementRegion)		String			see notes below on expanded region bounds; acceptable values: zoom2x
-.setPlacementRegion(String)	none			see notes below on expanded region bounds; acceptable values: zoom2x
-.getPreloadRegion()		Number			see notes below on expanded region bounds; acceptable values: 0=off to 1=zoom2x
-.setPreloadRegion(Number)	none			see notes below on expanded region bounds; acceptable values: 0=off to 1=zoom2x
-.getAllQtys()			Array:Numbers		returns sums of quantities across all the GOEXs; may be useful during application debugging:
-							[0]=qty GOEXs under management, [1]=qty GOEXs added to map, [2]=qty Event Listeners allocated,
-							[3]=qty images loaded, [4]=sum loaded image pixel sizes (width * height), [5]=qty being displayed
+Methods:				Returns			Description
+--------				-------			-----------
+.getMap()				google.maps.Map		(see the Google Maps API V3 definitions for a GroundOverlay)
+.addGOEX(GroundOverlayEX)		Boolean			add a GOEX to manage; true=add was successful; currently the only reason for rejection is that the GroundOverlayEX does not have a RegionBounds defined or calculated
+.startOfBulkload()			none			indicates the start of a bulk load process of many GOEXs
+.addGOEXbulkload(GroundOverlayEX)	Boolean			one of a large bulk to GOEXs being added; when bulk loading, PreloadRegion is ignored until [.endOfBulkload() is called to help reduce simultaneous download of imagery]
+.endOfBulkload()			none			indicates the end of bulk loading
+.setAllOpacity(Number)			none			changes the opacity of every GroundOverlayEX object being managed
+.getPlacementRegion)			String			see notes below on expanded region bounds; acceptable values: zoom2x
+.setPlacementRegion(String)		none			see notes below on expanded region bounds; acceptable values: zoom2x
+.getPreloadRegion()			Number			see notes below on expanded region bounds; acceptable values: 0=off to 1=zoom2x
+.setPreloadRegion(Number)		none			see notes below on expanded region bounds; acceptable values: 0=off to 1=zoom2x
+.getAllQtys()				Array:Numbers		returns sums of quantities across all the GOEXs; may be useful during application debugging:
+									[0]=qty GOEXs under management, [1]=qty GOEXs added to map, [2]=qty Event Listeners allocated,
+									[3]=qty images loaded, [4]=sum loaded image pixel sizes (width * height), [5]=qty being displayed
 
 Code example:
 -------------
@@ -400,6 +403,12 @@ The preloadRegion is a value between 0 and 1.  0 means no preloadRegion.  1 mean
 mid-points between the current map viewport size and the preloadRegion.  For example, .5 means the preloadRegion is half-way between the map viewport and the 
 placementRegion; .25 means just quarter-way from the viewport to the placementRegion, etc.
 
+If many GOEX's are loaded into the manager class simultaneously at the first initialization of a map, with a preloadRegion defined, some browsers (particularly
+Firefox) get image download errors.  To help mitigate this problem with the browser, some recommendations:
+1.  Start out at a mid-range zoom level or higher ... don't start out with zoom levels 0 to 5.
+2.  Use the .startOfBulkload(), .addGOEXbulkload, and .endOfBulkload methods to bulk load at map initialization.  The preloadRegion will temporarily be 
+	ignored, reducing the number of images initially downloaded in bulk.  It is recommended to even use a setTimeout() to call the .endOfBulkload() method
+	after say 5 or so seconds to allow the visible images to download first.  See the code example below.
 
 Events Notes:
 -------------
@@ -410,17 +419,22 @@ event happenings to the GroundOverlayEX_mgr object (*without* using Google Maps 
 applicable Google Maps event the application can listen to, and passes which GroundOverlayEX object the event happened to. The application need only listen to 
 the manager, not all the individual GroundOverlayEX objects.
 
-Code example:
+Code *notional* example:
 	var goexMgr = new GroundOverlayEX_mgr(map);
 	var listener = google.maps.event.addListener(goexMgr, "dblclick", function(mouseEvent, thegoex) { ... });
+	goexMgr.startOfBulkload();
 	:
 	var goex1 = new GroundOverlayEX( ..., ..., { ..., clickable: true, clickableAtZoom: 4, clickableEvents: "dblclick" });
-	var success = goexMgr.addGoes(goex1);
+	var success = goexMgr.addGOEXbulkload(goex1);
 	var goex2 = new GroundOverlayEX( ..., ..., { ..., clickable: true, clickableAtZoom: 4, clickableEvents: "dblclick" });
-	success = goexMgr.addGoes(goex2);
+	success = goexMgr.addGOEXbulkload(goex2);
 	var goex3 = new GroundOverlayEX( ..., ..., { ..., clickable: true, clickableAtZoom: 4, clickableEvents: "dblclick" });
-	success = goexMgr.addGoes(goex3);
+	success = goexMgr.addGOEXbulkload(goex3);
 	var goex4 = new GroundOverlayEX( ..., ..., { ..., clickable: true, clickableAtZoom: 4, clickableEvents: "dblclick" });
-	success = goexMgr.addGoes(goex4);
+	success = goexMgr.addGOEXbulkload(goex4);
 	var goex5 = new GroundOverlayEX( ..., ..., { ..., clickable: true, clickableAtZoom: 4, clickableEvents: "dblclick" });
-	success = goexMgr.addGoes(goex5);
+	success = goexMgr.addGOEXbulkload(goex5);
+	:
+	: hundreds more loaded (of course a database extract and a loop would really be used
+	:
+	setTimeout( { goexMgr.endOfBulkload(); }, 5000);
