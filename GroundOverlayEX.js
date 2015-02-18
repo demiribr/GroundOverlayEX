@@ -3,7 +3,7 @@
 //////////////////////////////////////////////////////////////////////////////
 /*
 Extended GroundOverlay class for Google Maps API V3
-Version: 1.1
+Version: 1.2
 
 Source Respository: https://github.com/azmikemm/GroundOverlayEX
 Documentation: see "documentation.txt" in github repository for full API description
@@ -60,6 +60,7 @@ function GroundOverlayEX(url, bounds, GO_opts) {
 	this.bounds_ = null;
 	this.boundsOrig_ = null;
 	this.regionBounds_ = null;
+	this.regionBoundsOrig_ = null;
 	this.llq_ = null;
 	this.llqOrig_ = null;
 	this.llqType_ = "u";		// R=rectangular, N=non-rectangular, u=unknown
@@ -81,6 +82,7 @@ function GroundOverlayEX(url, bounds, GO_opts) {
 	this.qtyImgsLoaded_ = 0;
 	this.memoryImgsLoaded_ = 0;
 	this.cropping_ = false;
+	this.overCropped_ = false;
 	this.cropBase_ = [];
 	this.cropOrigImgWidth_ = 0;
 	this.cropOrigImgHeight_ = 0;
@@ -135,7 +137,7 @@ function GroundOverlayEX(url, bounds, GO_opts) {
 		if (GO_opts.cropToWidth != undefined) { if (Number(GO_opts.cropToWidth) > 0) { this.cropToWidth_ = Math.round(Number(GO_opts.cropToWidth)); } }
 		if (GO_opts.cropToHeight != undefined) { if (Number(GO_opts.cropToHeight) > 0) { this.cropToHeight_ = Math.round(Number(GO_opts.cropToHeight)); } }
 		if (GO_opts.latlngQuad != undefined && GO_opts.latlngQuad != null) { this.llq_ = GO_opts.latlngQuad; this.llqOrig_ = GO_opts.latlngQuad; this.bounds_ = null; }
-		if (GO_opts.regionBounds != undefined && GO_opts.regionBounds != null) { this.regionBounds_ = GO_opts.regionBounds; }
+		if (GO_opts.regionBounds != undefined && GO_opts.regionBounds != null) { this.regionBounds_ = GO_opts.regionBounds; this.regionBoundsOrig_ = GO_opts.regionBounds; }
 		if (GO_opts.zoomArray != undefined && GO_opts.zoomArray != null) { this.zoomArray_ = GO_opts.zoomArray; }
 		if (GO_opts.clickableEvents != undefined) {
 			// this.clickableEvents_: 1=click, 2=dblclick, 4=rightclick, 8=mouseover, 16=mouseout, 32=mousedown, 64=mouseup
@@ -250,7 +252,7 @@ GroundOverlayEX.prototype.onAdd = function() {
 		// assess whether there is sufficient information to perform the required cropping
 		if (this.cropping_ && this.cropOrigImgWidth_ <= 0 && this.cropOrigImgHeight_ <= 0 && this.zoomArray_.length() > 1) {
 			// nope, need to force load the passed url image
-			var r = this.zoomArray_.whichIndexPerURL(this.url_);
+			var r = this.zoomArray_.whichIndexPerUrl(this.url_);
 			this.doLoadImageNumber_(r);
 		}
 		
@@ -280,25 +282,25 @@ GroundOverlayEX.prototype.draw = function() {
 		var de = this.displayedElement_;
 		if (this.displayMode_ == "Q") {
 			// rectangular or non-rectangular latlngQuad method; corners order is BL, BR, TR, TL
-			var gmpoint = overlayProjection.fromLatLngToDivPixel(this.llq_.getBottomLeft());
+			var gmpoint1 = overlayProjection.fromLatLngToDivPixel(this.llq_.getBottomLeft());
+			var gmpoint2 = overlayProjection.fromLatLngToDivPixel(this.llq_.getBottomRight());
+			var gmpoint3 = overlayProjection.fromLatLngToDivPixel(this.llq_.getTopRight());
+			var gmpoint4 = overlayProjection.fromLatLngToDivPixel(this.llq_.getTopLeft());
 			var point1 = [];
-			point1[0] = Math.round(gmpoint.x);
-			point1[1] = Math.round(gmpoint.y);
+			point1[0] = Math.round(gmpoint1.x);
+			point1[1] = Math.round(gmpoint1.y);
 			this.corners_[0] = point1;
-			gmpoint = overlayProjection.fromLatLngToDivPixel(this.llq_.getBottomRight());
 			var point2 = [];
-			point2[0] = Math.round(gmpoint.x);
-			point2[1] = Math.round(gmpoint.y);
+			point2[0] = Math.round(gmpoint2.x);
+			point2[1] = Math.round(gmpoint2.y);
 			this.corners_[1] = point2;
-			gmpoint = overlayProjection.fromLatLngToDivPixel(this.llq_.getTopRight());
 			var point3 = [];
-			point3[0] = Math.round(gmpoint.x);
-			point3[1] = Math.round(gmpoint.y);
+			point3[0] = Math.round(gmpoint3.x);
+			point3[1] = Math.round(gmpoint3.y);
 			this.corners_[2] = point3;
-			gmpoint = overlayProjection.fromLatLngToDivPixel(this.llq_.getTopLeft());
 			var point4 = [];
-			point4[0] = Math.round(gmpoint.x);
-			point4[1] = Math.round(gmpoint.y);
+			point4[0] = Math.round(gmpoint4.x);
+			point4[1] = Math.round(gmpoint4.y);
 			this.corners_[3] = point4;
 
 			// form a psuedo-bounds for the given lats and lons
@@ -423,6 +425,11 @@ GroundOverlayEX.prototype.getLatLngQuadOriginal = function() {
 	//  return: LatLngQuad=original LatLngQuad from the constructor; null is a possible return value if not available
 	return this.llqOrig_;
 }
+GroundOverlayEX.prototype['getOverCropped'] = GroundOverlayEX.prototype.getOverCropped;
+GroundOverlayEX.prototype.getOverCropped = function() {
+	// return: true=overcropped and image likely invisible; false=image properly cropped (or not cropped)
+	return this.overCropped_;
+}
 GroundOverlayEX.prototype['getRegionBounds'] = GroundOverlayEX.prototype.getRegionBounds;
 GroundOverlayEX.prototype.getRegionBounds = function() {
 	// return: maps.google.LatLngBounds=region bounds (either directly specified during constructor or subsequently calculated)
@@ -451,7 +458,10 @@ GroundOverlayEX.prototype.setRotation = function(pDegCCW) {
 	}
 	if (this.displayMode_ == "B") {
 		this.doPerformRotation_();
-		if (this.displayedElement_ != null) this.recordNewRectLLQ_(this.displayedElement_);
+		if (this.displayedElement_ != null) {
+			this.recordNewRectLLQ_(this.displayedElement_);
+			this.recomputeRegionBounds_();
+		}
 	}
 }
 GroundOverlayEX.prototype['getDrawOrder'] = GroundOverlayEX.prototype.getDrawOrder;
@@ -639,7 +649,7 @@ GroundOverlayEX.prototype.assessRegion_ = function() {
 			if (this.imgsLoaded_[r] == 0) {
 				// the needed image is not yet loaded; so load it which at callback will re-assess displaying it
 				this.doLoadImageNumber_(r);
-			} else {
+			} else if (this.imgsLoaded_[r] == 2) {
 				// the needed image is already loaded
 				this.doDisplayImageNumber_(r);
 			}
@@ -741,11 +751,27 @@ GroundOverlayEX.prototype.recordCropBase_ = function(pOrigWidth, pOrigHeight) {
 		var cropYtop_base = 0;
 		var cropWidth_base = pOrigWidth;
 		var cropHeight_base = pOrigHeight;
-		if (this.cropFromLeft_ > 0) { cropXleft_base = this.cropFromLeft_; }
-		if (this.cropToWidth_ > 0) { cropWidth_base = this.cropToWidth_; }
-		else { cropWidth_base = pOrigWidth - cropXleft_base; }
-		if (this.cropFromBottom_ > 0) { cropHeight_base = pOrigHeight - this.cropFromBottom_; }
-		if (this.cropToHeight_ > 0) { cropYtop_base = (cropHeight_base - this.cropToHeight_); cropHeight_base = this.cropToHeight_; }
+
+		// compose the cropBase from the initialization data
+		if (this.cropFromLeft_ > 0) {
+			if (this.cropFromLeft_ >= this.cropOrigImgWidth_) this.overCropped_ = true;
+			cropXleft_base = this.cropFromLeft_; 
+		}
+		if (this.cropToWidth_ > 0) {
+			if (this.cropToWidth_ > (this.cropOrigImgWidth_ - cropXleft_base)) this.overCropped_ = true;
+			cropWidth_base = this.cropToWidth_; 
+		} else { 
+			cropWidth_base = this.cropOrigImgWidth_ - cropXleft_base; 
+		}
+		if (this.cropFromBottom_ > 0) { 
+			if (this.cropFromBottom_ >= this.cropOrigImgHeight_) this.overCropped_ = true;
+			cropHeight_base = this.cropOrigImgHeight_ - this.cropFromBottom_; 
+		}
+		if (this.cropToHeight_ > 0) { 
+			cropYtop_base = (cropHeight_base - this.cropToHeight_); 
+			if (this.cropToHeight_ > (this.cropOrigImgHeight_ - cropYtop_base)) this.overCropped_ = true;
+			cropHeight_base = this.cropToHeight_; 
+		}
 
 		this.cropBase_[0] = cropXleft_base;
 		this.cropBase_[1] = cropYtop_base;
@@ -769,6 +795,8 @@ GroundOverlayEX.prototype.doCropImageNumber_ = function(pIndex) {
 		var cropWidth = Math.round(this.cropBase_[2] * workImg.width / this.cropOrigImgWidth_);
 		var cropHeight = Math.round(this.cropBase_[3] * workImg.height / this.cropOrigImgHeight_);
 
+		if (cropXleft >= workImg.width || cropYtop >= workImg.height) { this.overCropped_ = true; }
+		if (cropWidth > (workImg.width - cropXleft) || cropHeight > (workImg.height - cropYtop)) { this.overCropped_ = true; }
 		// note to handle issues with browser bugs auto-clipping transformation of very large images, a border MUST be present at all times (though transparent).
 		var canvas = document.createElement('canvas');
 		this.canvases_[pIndex] = canvas;
@@ -793,6 +821,7 @@ GroundOverlayEX.prototype.doCropImageNumber_ = function(pIndex) {
 GroundOverlayEX.prototype.doDisplayImageNumber_ = function(pIndex) {
 	if (pIndex >= 0) {
 		if (this.mapAdded_ && pIndex != this.imgDisplayed_) {
+
 			// display the indicated image; first remove any existing displayed image
 			if (this.displayedElement_ != null) { 
 				this.displayedElement_.parentNode.removeChild(this.displayedElement_); 
@@ -890,6 +919,19 @@ GroundOverlayEX.prototype.doQuadrilateralTransform_ = function() {
 	de.style["-o-transform"] = ts;
 	de.style.transform = ts;
 }
+GroundOverlayEX.prototype.recomputeRegionBounds_ = function() {
+	// the this.llq_ is available to create bounding boxes
+	if (this.regionBoundsOrig_ == null) {
+		// no regionBounds was set by the configuration, so the new bounds is just a simple recompute
+		this.regionBounds_ = this.llq_.getBoundsBox();
+	} else {
+		// a regionBounds was defined by the configuration, so need to adapt that
+		this.regionBounds_ = this.regionBoundsOrig_.extend(this.llq_.getBottomLeft());
+		this.regionBounds_ = this.regionBounds_.extend(this.llq_.getBottomRight());
+		this.regionBounds_ = this.regionBounds_.extend(this.llq_.getTopRight());
+		this.regionBounds_ = this.regionBounds_.extend(this.llq_.getTopLeft());
+	}
+}
 GroundOverlayEX.prototype.adjustForRotation_ = function(cX, cY, pX, pY) {
 	// rotate the non-rotated pX,pY around cX,cY according to current rotate setting
 	return this.doAdjustForRotation_(cX, cY, pX, pY, this.rotate_);
@@ -982,6 +1024,28 @@ GroundOverlayEX.prototype.shouldClickable_ = function(pEventNumber) {
 	}
 	return false;
 }
+GroundOverlayEX.prototype.getEventInfo_ = function(pMouseEvent) {
+	var retInfo = [];
+	retInfo[0] = -1;
+	retInfo[1] = -1;
+	if (this.zoomArray_.length() > 1) {	
+		if (this.displayedElement_ != null && this.origImgWidth_ > 0 && this.origImgHeight_ > 0) {
+			retInfo[0] = Math.round(pMouseEvent.layerX * (this.origImgWidth_ / this.displayedElement_.width));
+			retInfo[1] = Math.round(pMouseEvent.layerY * (this.origImgHeight_ / this.displayedElement_.height));
+		}
+	} else {
+		retInfo[0] = pMouseEvent.layerX;
+		retInfo[1] = pMouseEvent.layerY;
+	}
+
+	// need to use ContainerPixel in this case since PageX and PageY are in the context of the entire page, not just the Map Div
+	var overlayProjection = this.getProjection();
+	var screenPoint = new google.maps.Point(pMouseEvent.pageX, pMouseEvent.pageY);
+	var pointLatLon = overlayProjection.fromContainerPixelToLatLng(screenPoint);
+	retInfo[2] = pointLatLon.lat();
+	retInfo[3] = pointLatLon.lng();
+	return retInfo;
+}
 
 // for the following listener callback functions:
 //   this = DOM root window
@@ -1012,61 +1076,66 @@ function GroundOverlayEX_mapBoundsChanged_(GOobj) {
 //			   page* is point within the entire DOM top level page coord space (including scrolled-off areas); 
 //			   screen* is within the extended-monitor screen coord space
 function GroundOverlayEX_imageClicked_(GOobj, evt) {
-	if (GOobj.shouldClickable_(1) && this.clickStarted_) {  
-		google.maps.event.trigger(GOobj, "click", evt, GOobj); 
-		if (GOobj.manager_ != null) { google.maps.event.trigger(GOobj.manager_, "click", evt, GOobj); }
+	if (GOobj.shouldClickable_(1) && this.clickStarted_) {
+		var info = GOobj.getEventInfo_(evt);
+		google.maps.event.trigger(GOobj, "click", evt, GOobj, info[0], info[1], info[2], info[3]); 
+		if (GOobj.manager_ != null) { google.maps.event.trigger(GOobj.manager_, "click", evt, GOobj, info[0], info[1], info[2], info[3]); }
 	}
 }
 function GroundOverlayEX_imageDoubleClicked_(GOobj, evt) {
-	if (GOobj.shouldClickable_(2)) { 
-		google.maps.event.trigger(GOobj, "dblclick", evt, GOobj);
-		if (GOobj.manager_ != null) { google.maps.event.trigger(GOobj.manager_, "dblclick", evt, GOobj); }
+	if (GOobj.shouldClickable_(2)) {
+		var info = GOobj.getEventInfo_(evt);
+		google.maps.event.trigger(GOobj, "dblclick", evt, GOobj, info[0], info[1], info[2], info[3]);
+		if (GOobj.manager_ != null) { google.maps.event.trigger(GOobj.manager_, "dblclick", evt, GOobj, info[0], info[1], info[2], info[3]); }
 	}
 }
 function GroundOverlayEX_imageRightClicked_(GOobj, evt) {
-	if (GOobj.shouldClickable_(4)) { 
-		google.maps.event.trigger(GOobj, "rightclick", evt, GOobj);
-		if (GOobj.manager_ != null) { google.maps.event.trigger(GOobj.manager_, "rightclick", evt, GOobj); }
+	if (GOobj.shouldClickable_(4)) {
+		var info = GOobj.getEventInfo_(evt);
+		google.maps.event.trigger(GOobj, "rightclick", evt, GOobj, info[0], info[1], info[2], info[3]);
+		if (GOobj.manager_ != null) { google.maps.event.trigger(GOobj.manager_, "rightclick", evt, GOobj, info[0], info[1], info[2], info[3]); }
 	}
 }
 function GroundOverlayEX_imageMouseOver_(GOobj, evt) {
 	// this happens only once when the clicked or non-clicked cursor first passes over the displayed element;
 	// however when resizing or rotating, the cursor may pass over the bounds over and over
-	if (GOobj.shouldClickable_(8)) { 
-		google.maps.event.trigger(GOobj, "mouseover", evt, GOobj);
-		if (GOobj.manager_ != null) { google.maps.event.trigger(GOobj.manager_, "mouseover", evt, GOobj); }
+	if (GOobj.shouldClickable_(8)) {
+		var info = GOobj.getEventInfo_(evt);
+		google.maps.event.trigger(GOobj, "mouseover", evt, GOobj, info[0], info[1], info[2], info[3]);
+		if (GOobj.manager_ != null) { google.maps.event.trigger(GOobj.manager_, "mouseover", evt, GOobj, info[0], info[1], info[2], info[3]); }
 	}
 }
 function GroundOverlayEX_imageMouseOut_(GOobj, evt) {
 	// this happens only once when the non-clicked or clicked cursor first leaves the displayed element;
 	// however when resizing or rotating, the cursor may pass out of the bounds over and over
-	
-	if (GOobj.shouldClickable_(16)) { 
-		google.maps.event.trigger(GOobj, "mouseout", evt, GOobj);
-		if (GOobj.manager_ != null) { google.maps.event.trigger(GOobj.manager_, "mouseout", evt, GOobj); }
+	if (GOobj.shouldClickable_(16)) {
+		var info = GOobj.getEventInfo_(evt);
+		google.maps.event.trigger(GOobj, "mouseout", evt, GOobj, info[0], info[1], info[2], info[3]);
+		if (GOobj.manager_ != null) { google.maps.event.trigger(GOobj.manager_, "mouseout", evt, GOobj, info[0], info[1], info[2], info[3]); }
 	}
 }
 function GroundOverlayEX_imageMouseDown_(GOobj, evt) {
 	// this happens only once when the mouse button is pressed and held over the displayed element
-	
 	if (GOobj.shouldClickable_(32)) { 
-		google.maps.event.trigger(GOobj, "mousedown", evt, GOobj);
-		if (GOobj.manager_ != null) { google.maps.event.trigger(GOobj.manager_, "mousedown", evt, GOobj); }
+		var info = GOobj.getEventInfo_(evt);
+		google.maps.event.trigger(GOobj, "mousedown", evt, GOobj, info[0], info[1], info[2], info[3]);
+		if (GOobj.manager_ != null) { google.maps.event.trigger(GOobj.manager_, "mousedown", evt, GOobj, info[0], info[1], info[2], info[3]); }
 	}
 }
 function GroundOverlayEX_imageMouseUp_(GOobj, evt) {
 	// this happens only once when the mouse button is resleased when held over the displayed element;
 	// note that this means the cursor is still "floating" over the displayed element
-	
-	if (GOobj.shouldClickable_(64)) { 
-		google.maps.event.trigger(GOobj, "mouseup", evt, GOobj);
-		if (GOobj.manager_ != null) { google.maps.event.trigger(GOobj.manager_, "mouseup", evt, GOobj); }
+	if (GOobj.shouldClickable_(64)) {
+		var info = GOobj.getEventInfo_(evt);
+		google.maps.event.trigger(GOobj, "mouseup", evt, GOobj, info[0], info[1], info[2], info[3]);
+		if (GOobj.manager_ != null) { google.maps.event.trigger(GOobj.manager_, "mouseup", evt, GOobj, info[0], info[1], info[2], info[3]); }
 	}
 	if (evt.button == 2) {
 		// was a right click
-			if (GOobj.clickable_ && !GOobj.isEditing_) { 
-				google.maps.event.trigger(GOobj, "rightclick", evt, GOobj); 
-				if (GOobj.manager_ != null) { google.maps.event.trigger(GOobj.manager_, "rightclick", evt, GOobj); }
+			if (GOobj.clickable_ && !GOobj.isEditing_) {
+				var info = GOobj.getEventInfo_(evt);
+				google.maps.event.trigger(GOobj, "rightclick", evt, GOobj, info[0], info[1], info[2], info[3]); 
+				if (GOobj.manager_ != null) { google.maps.event.trigger(GOobj.manager_, "rightclick", evt, GOobj, info[0], info[1], info[2], info[3]); }
 			}
 	}
 }
