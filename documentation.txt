@@ -1,7 +1,7 @@
 Defines javascript classes:  GroundOverlayEx, GroundOverlayEX_mgr, LatLngQuad, ZoomArray, ZoomEntryZoom, ZoomEntryAlt_ft, ZoomEntryAlt_m
 Classes are extended from google.maps.OverlayView (GroundOverlayEx) and google.maps.MVCObject (all the rest)
 Libraries needed:  (javascript) Google Maps API V3, Numeric.js
-Version 1.1
+Version 1.2
 Attribution: Mike Maschino, Google Maps API
 License: MIT License (see License.txt file)
 
@@ -128,37 +128,38 @@ Extends from class: google.maps.OverlayView
 Constructor:						Returns
 ------------						-------
 GroundOverlayEX(String:url, 
-		google.maps.LatLngBounds:latlngBox, 
+		google.maps.LatLngBounds:boundsBox, 
 		Object:GroundOverlayEX_options)		Object
 
 Passed Parameter Notes:
 -----------------------
   url:  should always be passed even if is one of the URLs in a ZoomArray; if cropping, then this should be the URL for the image which the cropping parameters apply to
-  latlngBox:  for a LatLngBox ground overlay, a LatLngBounds must be provided; for a LatLngQuad ground overlay, this should be null ... if both a LatLngQuad and a LatLngBounds are provided, the LatLngBounds will be ignored
-  GroundOverlayEX_options:			Default	Description
-  ------------------------			-------	-----------
-	clickable: Boolean,			false	true=pass-thru various click and mouse events for the application to listen to
-	clickableAtZoom: Number,		0	specifies at which zoom level or higher that clickable events start to be listened for
-	clickableEvents: String,		"all"	specifies which events are wanted: "all","click","dblclick","rightclick","mouseover","mouseout","mousedown","mouseup"
-	map: google.maps.Map,			null	auto-loads the google.maps.MAP; if not specified then the application must invoke the .setMap() method prior to using the GroundOverlayEX object
-	opacity: Number,			1	number ranging from zero (transparent) to one (fully opaque) to be applied to the displayed image
-	rotate: Number,				0	specifies the rotation to be applied to the image only in latlngBounds mode; ignored if a LatLngQuad is specified; degrees counter-clockwise
-	cropOrigImgWidth: Number,		0	if specified, this must be the original image width on which the crop values below are based; see cropping notes below
-	cropOrigImgHeight: Number,		0	if specified, this must be the original image height on which the crop values below are based; see cropping notes below
-	cropFromLeft: Number,			0	if specified, first crop the image from the left the number of indicated pixels; see cropping notes below
-	cropToWidth: Number,			0	if specified, second crop the resultant width to the indicated pixels; see cropping notes below
-	cropFromBottom: Number,			0	if specified, first crop the image from the bottom the number of indicated pixels; see cropping notes below
-	cropToHeight: Number,			0	if specified, second crop the resultant height to the indicated pixels; see cropping notes below
-	latlngQuad: LatLngQuad,			null	specifies the LatLngQuad to use to display the GroundOverlayEX images; overrides any latlngBox passed parameter
-	id: String,				""	optional application-defined identity string for the GroundOverlayEX object; only used by the application
-	displayText: String,			""	optional string of information associated with the groundoverlay; can be used for a google.maps.InfoWindow; only used by the application
-	zoomArray: ZoomArray,			null	specifies a set of image URLs to display at different map zoom levels; if not specified then the url passed parameter will be used at all zoom levels
-	regionBounds: google.maps.LatLngBounds,	null	specifies a region bounds if which is visible in any portion on the map viewport, the GroundOverlayEX will load the proper image for the zoom and display it
-	drawOrder: Number,			0	specifies a layered drawing order number in cases where ground overlay images overlap; if not specified then zero is used
-	zIndexBase: Number,			1000	the drawOrder is added to this zIndexBase for layering in the browser; if not specified then a default zIndexBase is used
-	zIndex: Number,				0	a specific zIndex to use instead of zIndexBase+drawOrder; if specified then the other two are ignored
+  boundsBox:  for a LatLngBounds-mode ground overlay, a LatLngBounds must be provided; for a LatLngQuad-mode ground overlay, this should be null ... if both a LatLngQuad and a LatLngBounds are provided, the LatLngBounds will be ignored
+  
+GroundOverlayEX_options:			Default	Description
+------------------------			-------	-----------
+  clickable: Boolean,				false	true=pass-thru various click and mouse events for the application to listen to
+  clickableAtZoom: Number,			0	specifies at which zoom level or higher that clickable events start to be listened for
+  clickableEvents: String,			"all"	specifies which events are wanted: "all","click","dblclick","rightclick","mouseover","mouseout","mousedown","mouseup"
+  map: google.maps.Map,				null	auto-loads the google.maps.MAP; if not specified then the application must invoke the .setMap() method prior to using the GroundOverlayEX object
+  opacity: Number,				1	number ranging from zero (transparent) to one (fully opaque) to be applied to the displayed image
+  rotate: Number,				0	specifies the rotation to be applied to the image only in latlngBounds mode; ignored if a LatLngQuad is specified; degrees counter-clockwise
+  cropOrigImgWidth: Number,			0	if specified, this must be the original image width on which the crop values below are based; see cropping notes below
+  cropOrigImgHeight: Number,			0	if specified, this must be the original image height on which the crop values below are based; see cropping notes below
+  cropFromLeft: Number,				0	if specified, first crop the image from the left the number of indicated pixels; see cropping notes below
+  cropToWidth: Number,				0	if specified, second crop the resultant width to the indicated pixels; see cropping notes below
+  cropFromBottom: Number,			0	if specified, first crop the image from the bottom the number of indicated pixels; see cropping notes below
+  cropToHeight: Number,				0	if specified, second crop the resultant height to the indicated pixels; see cropping notes below
+  latlngQuad: LatLngQuad,			null	specifies the LatLngQuad to use to display the GroundOverlayEX images; overrides any latlngBox passed parameter
+  id: String,					""	optional application-defined identity string for the GroundOverlayEX object; only used by the application
+  displayText: String,				""	optional string of information associated with the groundoverlay; can be used for a google.maps.InfoWindow; only used by the application
+  zoomArray: ZoomArray,				null	specifies a set of image URLs to display at different map zoom levels; if not specified then the url passed parameter will be used at all zoom levels
+  regionBounds: google.maps.LatLngBounds,	null	specifies a region bounds if which is visible in any portion on the map viewport, the GroundOverlayEX will load the proper image for the zoom and display it
+  drawOrder: Number,				0	specifies a layered drawing order number in cases where ground overlay images overlap; if not specified then zero is used
+  zIndexBase: Number,				1000	the drawOrder is added to this zIndexBase for layering in the browser; if not specified then a default zIndexBase is used
+  zIndex: Number				0	a specific zIndex to use instead of zIndexBase+drawOrder; if specified then the other two are ignored
 
-Properties:			Returns				Description
+Extended Properties:		Returns				Description
 -----------			-------				-----------
 .position			LatLng				a fast and approximate center LatLng suitable for InfoWindows or other Google Map uses
 
@@ -167,9 +168,9 @@ Standard Methods:
 .getBounds()			google.maps.LatLngBounds	returns the current LatLngBounds for the image; null=none available
 .getMap()			google.maps.Map			(see the Google Maps API V3 definitions for a GroundOverlay)
 .getUrl()			String				returns the url passed parameter (and not any of the zoomArray URLs)
-.setMap(google.maps.Map)	none				note: this MUST be set before the GroundOverlayEX object will perform any actions
+.setMap(google.maps.Map:map)	none				note: this MUST be set before the GroundOverlayEX object will perform any actions
 .getOpacity()			Number				(see the Google Maps API V3 definitions for a GroundOverlay)
-.setOpacity(Number)		none				(see the Google Maps API V3 definitions for a GroundOverlay)
+.setOpacity(Number:opacity)	none				(see the Google Maps API V3 definitions for a GroundOverlay)
 
 Map Framework methods:
 ----------------------						
@@ -184,8 +185,9 @@ Extended Methods:
 .destroy()			none				completely destroy the object's internal data; object cannot be re-activated using .setMap(map)
 .getId()			String				gets the application-defined id for the Object; the Object only uses this to display any errors on the console log
 .getDisplayText()		String				gets the application-defined string for the Object; the Object does not use this string at all
-.setDisplayText(String)		none				sets the application-defined string for the Object; the Object does not use this string at all
+.setDisplayText(String:text)	none				sets the application-defined string for the Object; the Object does not use this string at all
 .getPosition()			google.maps.LatLng		returns a fast and approximate center LatLng suitable for InfoWindows or other Google Map uses
+.getOverCropped()		Boolean				returns true=cropping parameters are too large and likely made image invisible; false=image is properly cropped or there was no cropping specified
 .getDisplayMode()		String				returns which geographic coordinates are being used: 'B'=LatLngBounds, 'Q'=LatLngQuad
 .getBoundsOriginal()		google.maps.LatLngBounds	returns the LatLngBounds which was passed in the constructor; could be null
 .getLatLngType()		String				returns whether the LatLngQuad appears to be rectangular or non-rectangular: 'R'=rectangular, 'N'=non-rectangular, 'u'=known or not using LatLngQuad
@@ -193,13 +195,12 @@ Extended Methods:
 .getLatLngQuadOriginal()	LatLngQuad			returns the LatLngQuad which was passed in the constructor; could be null
 .getRegionBounds()		google.maps.LatLngBounds	returns the LatLngQuad for the region bounds in-use by the GroundOverlayEX; could be the region provided in the constructor; or if not provided then it will have been computed by the GroundOverlayEX class
 .getRotation()			Number				returns the rotation applied to the image only in latlngBounds mode
-.setRotation(Number)		none				sets the rotation to be applied to the image only in latlngBounds mode; ignored if a LatLngQuad is specified; degrees counter-clockwise
 .getDrawOrder()			Number				returns the current draw order value
-.setDrawOrder(Number)		none				sets a draw order value, and image will change zIndex order; must be >= 0
+.setDrawOrder(Number:drawOrder)	none				sets a draw order value, and image will change zIndex order; must be >= 0
 .getZindexBase()		Number				returns the application defined zIndexBase; 0=none set and the internal default is being used
-.setZindexBase(Number)		none				set the application defined zIndexBase, and image will change zIndex order; must be > 0; 0 = use default
+.setZindexBase(Number:zIndex)	none				set the application defined zIndexBase, and image will change zIndex order; must be > 0; 0 = use default
 .getZindex()			Number				get the override zIndex value; if > 0 then drawOrder and ZindexBase are ignored
-.setZindex(Number)		none				set the override zIndex value, and image will change zIndex order; if > 0 then drawOrder and ZindexBase are ignored
+.setZindex(Number:zIndex)	none				set the override zIndex value, and image will change zIndex order; if > 0 then drawOrder and ZindexBase are ignored
 .getEffectiveZindex()		Number				returns the zIndex in-use by the GroundOverlayEX object regardless of how it was calculated
 
 
@@ -244,6 +245,36 @@ The application developer has the option to widen the passed RegionBounds such t
 LatLngQuad's BoundingBox.  THis will have the effect of pre-loading and pre-displaying images that are very near to the viewport and very likely to be 
 displayed soon by the end-user.  Use of the optional GroundOverlayEX_mgr class can provide a more effective means to accomplish that for a large number
 of GroundOverlayEX objects.
+
+
+ZoomArray instead of Level-of-Detail
+------------------------------------
+The KML specification forces the creation of many times the quantity of GroundOverlay objects when there are several available resolutions of the same image, and
+uses a Level-of-Detail upper and lower limit to choose which to show and which to hide.  Rather than over-burdening Google Maps on the browser with this, the 
+GroundOverlayEX uses an alternate method to accomplish this more effectively for Google Maps.  A ZoomArray is a simple structure that allows the application
+developer to associate an image's per-resolution URL with a range of Google Maps zoom levels.  A trivial example is:
+
+Code Example:
+	var za = new ZoomArray();
+	var ze1 = new ZoomEntryZoom(0, 8, "http://somewhere.com/image1.jpg");
+	za.addZoomEntry(ze1);
+	var ze2 = new ZoomEntryZoom(9, 22, "http://somewhere.com/image1_highrez.jpg");
+	za.addZoomEntry(ze2);
+	var goex = new GroundOverlayEX("http://somewhere.com/image1_highrez.jpg", bnds, { zoomArray: za, map: map });
+
+This allows just one GroundOVerlayEX object to manage all the per-resolution image URLs, instead of two or three or more objects just to show the same image at different
+resolutions.  The cropping parameters (if specified) will be applied proportionally to all other resolutions (see the cropping notes below).
+
+Note that each image URL placed into the ZoomArray must be the same image, just a smaller or larger proportional version in terms of size and resolution.  If the imagery
+is of entirely larger or smaller regions at different resolution levels (a typical case for image tiling), then multiple GroundOverayEX objects would still have to be used.
+Indeed, use of GroundOverlay or GroundOverlayEX are not recommended for image tiling. 
+
+If the application's data has "camera"/"point-of-view" altitude data instead, there are ZoomEntryAlt_ft and ZoomEntryAlt_m available as well that will compute the 
+zoom levels based upon passed point-of-view altitude ranges.
+
+When using a ZoomArray, it is strongly recommended to pass the "OrigImgWidth" and "OrigImgHeight" values in the configuration options, especially when using either
+Cropping or listening to events.  The "OrigImgWidth" and "OrigImgHeight" must be for the image passed in the url parameter, and is the context that will be used for
+event generation and cropping.
 
 
 Cropping Notes:
@@ -310,7 +341,10 @@ The GroundOverlayEX class itself captures selected map events and events concern
 However, the application developer can listen to events from the GroundOverlayEX object itself.  If the passed parameter "clickable" is set to true,
 the object will pass-thru and trigger the following events when they occur (including the MouseEvent data).  Note the use of addListener instead of
 addDomListener: the GroundOverlayEX object itself is not subject to DOM events (its not "drawn" onto the web page; just the internally stored images are "drawn" 
-onto the web page).  The applicable GroundOverlayEx object is provided also as a second passed parameter.
+onto the web page).  The applicable GroundOverlayEx object is provided also as a second passed parameter, with additional four parameters of clicked on imageX
+point, imageY point, latitude, longitude:
+	
+Available DOM Events:
 	click, dblclick, rightclick, mouseover, mouseout, mousedown, mouseup
 
 Code example:
@@ -318,7 +352,13 @@ Code example:
 	var goex = new GroundOverlayEX( ..., ..., { ..., clickable: true});
 	var listener = google.maps.event.addListener(goex, "rightclick", function(mouseEvent, theGoex) { ... });
 
-There is some oddities about the DOM events.  
+The ImageX and imageY are expressed in values relative to the *cropped* size of the image passed in the url parameter (regardless of which actual image is presently 
+being shown).  So like cropping, if a ZoomArray has been defined and if the application developer does not pass in the "OrigImgWidth" and "OrigImgHeight" values,
+then the GroundOverlayEX object may be forced to also download the url passed parameter image file.  If ImageX and ImageY are returned as -1, then the
+GroundOverlayEX could not calculate the proper values.  However, the mouseEvent class itself has various useful X,Y points:  screen, page, client, and layer. 
+The mouseEvent.layerX and mouseEvent.layerY are the point-on-the-image, however for the size of the image currently shown via the ZoomArray.
+
+There are some oddities about the DOM events.  
 1. Double-clicking on an image will generate two "click" events then one "doubleclick" event.  This class passes them through as-is.
 2. When dragging the map, if the mousedown is on a GroundOverlayEX image, a "click" event gets generated even though a drag should not count as a click.
    The GroundOverlayEX detects this and will not generate a "click" event if the reason for the mousedown & mouseup was to drag the map.
@@ -349,10 +389,11 @@ GroundOverlayEX_mgr(google.maps.Map:map, GroundOverlayEX_mgr_options)		Object
 Passed Parameter Notes:
 -----------------------
   map:  google.maps.Map to be used for all the managed GroundOverlayEXs
-  GroundOverlayEX_mgr_options:		Default	Description
-  ----------------------------		-------	-----------
-	placementRegion: String,	zoom2x	see notes below on expanded region bounds; acceptable values: zoom2x
-	preloadRegion: Number		0	see notes below on expanded region bounds; acceptable values: 0=off to 1=placementRegion
+  
+GroundOverlayEX_mgr_options:		Default	Description
+----------------------------		-------	-----------
+  placementRegion: String,		zoom2x	see notes below on expanded region bounds; acceptable values: zoom2x
+  preloadRegion: Number			0	see notes below on expanded region bounds; acceptable values: 0=off to 1=placementRegion
 
 Methods:				Returns			Description
 --------				-------			-----------
@@ -414,27 +455,63 @@ Events Notes:
 -------------
 In order to reduce load on the map framework when hundreds or thousands of GroundOverlayEX objects are being displayed at maximum zoomout, the GroundOverlayEX_mgr 
 class can act as an aggregator for clickable events that happen from the GroundOverlayEX objects that it manages.  If managed GroundOverlayEX 
-obects are set as "clickable: true" in their constructor (and optionally have their "clickableAtZoom" and "clickableEvents" also set), those objects pass
-event happenings to the GroundOverlayEX_mgr object (*without* using Google Maps events listeners and triggers).  The GroundOverlayEX_mgr then triggers a 
-applicable Google Maps event the application can listen to, and passes which GroundOverlayEX object the event happened to. The application need only listen to 
-the manager, not all the individual GroundOverlayEX objects.
+obects are set as "clickable: true" in their constructor (and optionally have their "clickableAtZoom" and "clickableEvents" also set), those objects also trigger events 
+as the GroundOverlayEX_mgr object (*without* using Google Maps events listeners and triggers).  The application need only listen to  the manager, not all the individual
+GroundOverlayEX objects, as also shown in the code example below.
 
-Code *notional* example:
+Code example: cropping not shown in this example; show low-resolution image at zoom levels 0 thru 8
+-------------
+	:
+	:
 	var goexMgr = new GroundOverlayEX_mgr(map);
-	var listener = google.maps.event.addListener(goexMgr, "dblclick", function(mouseEvent, thegoex) { ... });
+	google.maps.event.addListener(goexMgr, "dblclick", function(mouseEvt, theGOEX, imageX, imageY, lat, lon){ a_GOEX_was_doubleclicked(theGOEX, mouseEvt, imageX, imageY, lat, lon); });
+
+	:
+	: setup a database query and read out all necessary image and geolocation information into an array called rows,
+	: we will assume the database has the following "columns":  id (record key), image URL hirez, image URL lorez, northBounds, southBounds, eastBounds, westBounds,
+	:	rotation, drawOrder, bottomLeftLat, bottomLeftLng, bottomRightLat, bottomRightLng, topRightLat, topRightLng, topLeftLat, topLeftLng
+	: must make sure all numeric "columns" contain zeros if no information (not blank)
+	:
 	goexMgr.startOfBulkload();
-	:
-	var goex1 = new GroundOverlayEX( ..., ..., { ..., clickable: true, clickableAtZoom: 4, clickableEvents: "dblclick" });
-	var success = goexMgr.addGOEXbulkload(goex1);
-	var goex2 = new GroundOverlayEX( ..., ..., { ..., clickable: true, clickableAtZoom: 4, clickableEvents: "dblclick" });
-	success = goexMgr.addGOEXbulkload(goex2);
-	var goex3 = new GroundOverlayEX( ..., ..., { ..., clickable: true, clickableAtZoom: 4, clickableEvents: "dblclick" });
-	success = goexMgr.addGOEXbulkload(goex3);
-	var goex4 = new GroundOverlayEX( ..., ..., { ..., clickable: true, clickableAtZoom: 4, clickableEvents: "dblclick" });
-	success = goexMgr.addGOEXbulkload(goex4);
-	var goex5 = new GroundOverlayEX( ..., ..., { ..., clickable: true, clickableAtZoom: 4, clickableEvents: "dblclick" });
-	success = goexMgr.addGOEXbulkload(goex5);
-	:
-	: hundreds more loaded (of course a database extract and a loop would really be used
-	:
+	var bounds,llQuad,GO_opts,goex,za;
+	for (var i in rows) {
+		if (rows[i][3] != 0 || rows[i][4] != 0 || rows[i][5] != 0 || rows[i][6] != 0) {
+			neBound = new google.maps.LatLng(rows[i][3], rows[i][5]);
+			swBound = new google.maps.LatLng(rows[i][4], rows[i][6]);
+			bounds = new google.maps.LatLngBounds(swBound, neBound);
+		} else bounds = null;
+		if (rows[i][9] != 0 || rows[i][10] != 0 || rows[i][11] != 0 || rows[i][12] != 0 || rows[i][13] != 0 || rows[i][14] != 0 || rows[i][15] != 0 || rows[i][16] != 0) {
+			blBound = new google.maps.LatLng(rows[i][9], rows[i][10]);
+			brBound = new google.maps.LatLng(rows[i][11], rows[i][12]);
+			trBound = new google.maps.LatLng(rows[i][13], rows[i][14]);
+			tlBound = new google.maps.LatLng(rows[i][15], rows[i][16]);
+			llQuad = new LatLngQuad(blBound, brBound, trBound, tlBound);
+		} else llQuad = null;
+		za = new ZoomArray();
+		ze1 = new ZoomEntryZoom(0, 8, String(rows[i][2]));
+		za.addZoomEntry(ze1);
+		ze2 = new ZoomEntryZoom(9, 22, String(rows[i][1]));
+		za.addZoomEntry(ze2);
+		GO_opts = {
+			id: String(rows[i][0]),
+			clickable: true,
+			clickableAtZoom: 4,
+			clickableEvents: "dblclick",
+			drawOrder: Number(rows[i][8]),
+			rotation: Number(rows[i][7]),
+			latlngQuad: llQuad,
+			zoomArray: za
+		}
+		goex = new GroundOverlayEX(String(rows[i][1]), bounds, GO_opts);
+		goexMgr.addGOEXbulkload(goex);
+	}
+	// wait 5 seconds after all that are actually visible are loaded and shown, then start preloading nearby off-screen images
 	setTimeout( { goexMgr.endOfBulkload(); }, 5000);
+	:
+	:
+}
+function a_GOEX_was_doubleclicked(mouseEvent, thegoex) {
+	// open an infoWindow on the GroundOverlayEX
+	var infoWind = new google.maps.InfoWindow({ content: "An InfoWindow" });
+	infoWind.open(map, thegoex);
+}
