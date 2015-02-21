@@ -144,8 +144,8 @@ GroundOverlayEX_options:			Default	Description
   map: google.maps.Map,				null	auto-loads the google.maps.MAP; if not specified then the application must invoke the .setMap() method prior to using the GroundOverlayEX object
   opacity: Number,				1	number ranging from zero (transparent) to one (fully opaque) to be applied to the displayed image
   rotate: Number,				0	specifies the rotation to be applied to the image only in latlngBounds mode; ignored if a LatLngQuad is specified; degrees counter-clockwise
-  cropOrigImgWidth: Number,			0	if specified, this must be the original image width on which the crop values below are based; see cropping notes below
-  cropOrigImgHeight: Number,			0	if specified, this must be the original image height on which the crop values below are based; see cropping notes below
+  origImgWidth: Number,				0	if specified, this must be the original image width on which the crop values below are based; see cropping end event notes below
+  origImgHeight: Number,			0	if specified, this must be the original image height on which the crop values below are based; see cropping and event notes below
   cropFromLeft: Number,				0	if specified, first crop the image from the left the number of indicated pixels; see cropping notes below
   cropToWidth: Number,				0	if specified, second crop the resultant width to the indicated pixels; see cropping notes below
   cropFromBottom: Number,			0	if specified, first crop the image from the bottom the number of indicated pixels; see cropping notes below
@@ -182,6 +182,7 @@ Map Framework methods:
 
 Extended Methods:
 -----------------
+.getVersion()			String				returns the version code of the GroundOverlayEX class
 .destroy()			none				completely destroy the object's internal data; object cannot be re-activated using .setMap(map)
 .getId()			String				gets the application-defined id for the Object; the Object only uses this to display any errors on the console log
 .getDisplayText()		String				gets the application-defined string for the Object; the Object does not use this string at all
@@ -397,6 +398,7 @@ GroundOverlayEX_mgr_options:		Default	Description
 
 Methods:				Returns			Description
 --------				-------			-----------
+.getVersion()				String			returns the version code of the GroundOverlayEX_mgr class
 .getMap()				google.maps.Map		(see the Google Maps API V3 definitions for a GroundOverlay)
 .addGOEX(GroundOverlayEX)		Boolean			add a GOEX to manage; true=add was successful; currently the only reason for rejection is that the GroundOverlayEX does not have a RegionBounds defined or calculated
 .startOfBulkload()			none			indicates the start of a bulk load process of many GOEXs
