@@ -3,7 +3,7 @@
 //////////////////////////////////////////////////////////////////////////////
 /*
 Extended GroundOverlay class for Google Maps API V3
-Version: 1.4
+Version: 1.41
 
 Source Respository: https://github.com/azmikemm/GroundOverlayEX
 Documentation: see "documentation.txt" in github repository for full API description
@@ -37,7 +37,7 @@ SOFTWARE.
 //////////////////////////////////////////////////////////////////////////////
 // GroundOverlayEX code
 //////////////////////////////////////////////////////////////////////////////
-var GROUNDOVERLAYEX_VERSION = "1.4";
+var GROUNDOVERLAYEX_VERSION = "1.41";
 var GOEX_EDITING_EXPANSE = 150;
 var GOEX_ZINDEX_BASE_DEFAULT = 1000;
 var GOEX_ZINDEX_EDITING_PLUSUP = 5000;
@@ -61,7 +61,7 @@ function GroundOverlayEX(url, bounds, GO_opts) {
 	// constructor for a new object; if both bounds and latlngQuad (in GO_opts) are provided, then latlngQuad overrules bounds (which will be ignored)
 	// basic GO-opts: opacity, clickable, map
 	// additional GO_opts:  rotate, origImgWidth, origImgHeight, cropFromLeft, cropFromBottom, cropToWidth, cropToHeight, latlngQuad
-	// additional GO_opts:  id, displayText, zoomArray, regionBounds, draworder, zIndex, zIndexBase, editable, doEditing
+	// additional GO_opts:  id, displayText, zoomArray, regionBounds, draworder, zIndex, zIndexBase, editable
 
 	// initialize "public" class variables
 	this.position = null;		// must be a LatLng
@@ -110,13 +110,6 @@ function GroundOverlayEX(url, bounds, GO_opts) {
 	this.imgsLoaded_ = [];
 	this.imgsRetry_ = [];
 	this.display_element_ = null;
-	this.editable_ = false;
-	this.doEditing_ = false;
-	this.isEditing_ = false;
-	this.editingForbidNonrect_ = false;
-	this.editingImageLoadedCallback_ = null;
-	this.editing_revert_element_ = null;
-	this.editing_elements_ = [];
 	this.mousemoveState_ = 0;
 	this.mousemovePrevX_ = 0;
 	this.mousemovePrevY_ = 0;
@@ -131,6 +124,15 @@ function GroundOverlayEX(url, bounds, GO_opts) {
 	this.imageListener5_ = null;
 	this.imageListener6_ = null;
 	this.imageListener7_ = null;
+
+	// editing private properties
+	this.editable_ = false;
+	this.doEditing_ = false;
+	this.isEditing_ = false;
+	this.editingForbidNonrect_ = false;
+	this.editingImageLoadedCallback_ = null;
+	this.editing_revert_element_ = null;
+	this.editing_elements_ = null;
 	this.editListener1_ = null;
 	this.editListener2_ = null;
 	this.editListener3_ = null;
@@ -155,7 +157,6 @@ function GroundOverlayEX(url, bounds, GO_opts) {
 		if (GO_opts.latlngQuad != undefined && GO_opts.latlngQuad != null) { this.llq_ = GO_opts.latlngQuad; this.llqType_ = "N"; this.llqOrig_ = GO_opts.latlngQuad; this.bounds_ = null; }
 		if (GO_opts.regionBounds != undefined && GO_opts.regionBounds != null) { this.regionBounds_ = GO_opts.regionBounds; this.regionBoundsOrig_ = GO_opts.regionBounds; }
 		if (GO_opts.zoomArray != undefined && GO_opts.zoomArray != null) { this.zoomArray_ = GO_opts.zoomArray; }
-		if (GO_opts.editable != undefined) { if (GO_opts.editable == true) this.setEditable(true); }
 		if (GO_opts.clickableEvents != undefined) {
 			// this.clickableEvents_: 1=click, 2=dblclick, 4=rightclick, 8=mouseover, 16=mouseout, 32=mousedown, 64=mouseup
 			str = String(GO_opts.clickableEvents);
@@ -173,6 +174,10 @@ function GroundOverlayEX(url, bounds, GO_opts) {
 					else if (tokens[i] == "all") this.clickableEvents_ |= 127;
 				}
 			}
+		}
+		if (typeof this.setEditable === "function") {
+			// editing extensions are present
+			if (GO_opts.editable != undefined) { if (GO_opts.editable == true) this.setEditable(true); }
 		}
 	}
 
@@ -360,11 +365,13 @@ GroundOverlayEX.prototype.draw = function() {
 			this.display_element_.doDrawLLQ_(corners);
 
 			// make proper changes to editing div's if present using the results of the corners just set
-			var bb = this.display_element_.getBoundsBox_();		// returns BL, TR, size
-			for (var i in this.editing_elements_) {
-				this.editing_elements_[i].adjustDrawLLQ_(bb);
+			if (this.editing_elements_ != null) {
+				var bb = this.display_element_.getBoundsBox_();		// returns BL, TR, size
+				for (var i in this.editing_elements_) {
+					this.editing_elements_[i].adjustDrawLLQ_(bb);
+				}
+				bb = null;
 			}
-			bb = null;
 
 		} else if (this.displayMode_ == "B") {
 			// rectangular latlngBox method;
@@ -388,9 +395,11 @@ GroundOverlayEX.prototype.draw = function() {
 			this.setRotation_(this.rotate_);
 
 			// make proper changes to editing div's if present
-			for (var i in this.editing_elements_) {
-				// always do size before position
-				this.editing_elements_[i].adjustDrawLLB_(nonBorderLeft, nonBorderTop, nonBorderWidth, nonBorderHeight);
+			if (this.editing_elements_ != null) {
+				for (var i in this.editing_elements_) {
+					// always do size before position
+					this.editing_elements_[i].adjustDrawLLB_(nonBorderLeft, nonBorderTop, nonBorderWidth, nonBorderHeight);
+				}
 			}
 		}
 		// reset opacity of the displayed image		
@@ -552,6 +561,11 @@ GroundOverlayEX.prototype.getEffectiveZindex = function() {
 	if (this.isEditing_) zIndex += GOEX_ZINDEX_EDITING_PLUSUP;
 	return zIndex;
 }
+GroundOverlayEX.prototype['supportsEditing'] = GroundOverlayEX.prototype.supportsEditing;
+GroundOverlayEX.prototype.supportsEditing = function() {
+	if (typeof this.setEditable === "function" && typeof this.setDoEditing === "function") return true;
+	return false;
+}
 
 ////////////////////////
 // Manager interface methods
@@ -621,7 +635,7 @@ GroundOverlayEX.prototype.emplaceProperListeners_ = function() {
 	}
 
 	if (this.display_element_.isMapped_()) {
-		if (this.shouldClickable_(32) || this.editable_) {
+		if (this.clickable_ || this.editable_) {
 			this.qtyListeners_++; 
 			if (this.imageListener1_ == null) { this.imageListener1_ = google.maps.event.addDomListener(this.display_element_.node_, "mousedown", function(evt) { GroundOverlayEX_imageMouseDown_(that, evt); }); }
 		} else {
@@ -667,8 +681,8 @@ GroundOverlayEX.prototype.emplaceProperListeners_ = function() {
 			this.qtyListeners_ =  this.qtyListeners_ + 2;
 			var el = null;
 			for (var i in this.editing_elements_) { if (this.editing_elements_[i].id_ == "edt") { el = this.editing_elements_[i].node_; } }
-			if (this.editListener1_ == null) { this.editListener1_ = google.maps.event.addDomListener(this.display_element_.node_, "mousemove", function(evt) { GroundOverlayEX_imageMouseMove_(that, evt); }); }
-			if (this.editListener2_ == null && el != null) { this.editListener2_ = google.maps.event.addDomListener(el, "mousemove", function(evt) { GroundOverlayEX_imageMouseMove_(that, evt); }); }
+			if (this.editListener1_ == null) { this.editListener1_ = google.maps.event.addDomListener(this.display_element_.node_, "mousemove", function(evt) { GroundOverlayEX_imageMouseMove_Editing_(that, evt); }); }
+			if (this.editListener2_ == null && el != null) { this.editListener2_ = google.maps.event.addDomListener(el, "mousemove", function(evt) { GroundOverlayEX_imageMouseMove_Editing_(that, evt); }); }
 			if (this.editListener3_ == null && el != null) { this.editListener3_ = google.maps.event.addDomListener(el, "mouseup", function(evt) { GroundOverlayEX_imageMouseUp_(that, evt); }); }
 		} else {
 			if (this.editListener1_ != null) { google.maps.event.removeListener(this.editListener1_); this.editListener1_ = null; }
@@ -1022,7 +1036,7 @@ GroundOverlayEX.prototype.doDisplayImageNumber_ = function(pIndex) {
 		}
 	} else {
 		// nothing is supposed to be displayed
-		this.setDoEditing(false);
+		if (typeof this.setDoEditing === "function") { this.setDoEditing(false); }
 		if (this.display_element_.isMapped_()) {
 			this.display_element_.removeFromMap_();
 			this.imgDisplayed_ = -1;
@@ -1035,8 +1049,10 @@ GroundOverlayEX.prototype.doZindex_ = function() {
 	// this gets called during the constructor options processing where this.display_element_ can be null
 	if (this.display_element_ != null) {
 		if (this.display_element_.isMapped_()) { this.display_element_.doZindex_(); }
-		for (var i in this.editing_elements_) {
-			this.editing_elements_[i].doZindex_();
+		if (this.editing_elements_ != null) {
+			for (var i in this.editing_elements_) {
+				this.editing_elements_[i].doZindex_();
+			}
 		}
 	}
 }
@@ -1139,7 +1155,6 @@ GroundOverlayEX.prototype.getCenterOfMapDiv_ = function() {
 	var centerY = (node.offsetTop + node.clientTop) + Math.round(node.clientHeight / 2);
 	return [centerX, centerY];
 }
-
 GroundOverlayEX.prototype.shouldClickable_ = function(pEventNumber) {
 	// this.clickableEvents_: 1=click, 2=dblclick, 4=rightclick, 8=mouseover, 16=mouseout, 32=mousedown, 64=mouseup
 	if (this.clickable_ && this.map != null) {
@@ -1334,17 +1349,7 @@ function GroundOverlayEX_imageMouseOver_(GOobj, evt) {
 		google.maps.event.trigger(GOobj, "mouseover", evt, GOobj, info[0], info[1], info[2], info[3]);
 		if (GOobj.manager_ != null) { google.maps.event.trigger(GOobj.manager_, "mouseover", evt, GOobj, info[0], info[1], info[2], info[3]); }
 	}
-	if (GOobj.isEditing_) { 
-		if (GOobj.mousemoveState_ == 2) {
-			// a mouseup event was missed	
-			GroundOverlayEX_imageMouseUp_(GOobj, evt);
-		} else if (GOobj.mousemoveState_ <= 1) {
-			var edge = GOobj.isAtWhichEdgePoint_(evt);
-			if (edge > 0) { GOobj.display_element_.node_.style.cursor = GOobj.useWhichCursor_(evt, edge); }
-			else { GOobj.display_element_.node_.style.cursor = 'move'; }
-			GOobj.mousemoveState_ = 1;
-		}
-	}
+	if (GOobj.isEditing_) { GroundOverlayEX_imageMouseOver_Editing_(GOobj, evt); }
 }
 function GroundOverlayEX_imageMouseOut_(GOobj, evt) {
 	// this happens only once when the non-clicked or clicked cursor first leaves the displayed element;
@@ -1354,58 +1359,17 @@ function GroundOverlayEX_imageMouseOut_(GOobj, evt) {
 		google.maps.event.trigger(GOobj, "mouseout", evt, GOobj, info[0], info[1], info[2], info[3]);
 		if (GOobj.manager_ != null) { google.maps.event.trigger(GOobj.manager_, "mouseout", evt, GOobj, info[0], info[1], info[2], info[3]); }
 	}
-	if (GOobj.isEditing_) { 
-		if (GOobj.mousemoveState_ == 2) {
-			// a mouseup event was missed
-			GroundOverlayEX_imageMouseUp_(GOobj, evt);
-		} else if (GOobj.mousemoveState_ <= 1) {
-			GOobj.display_element_.node_.style.cursor = 'default';
-			GOobj.mousemoveState_ = 0;
-		}
-	}
+	if (GOobj.isEditing_) { GroundOverlayEX_imageMouseOut_Editing_(GOobj, evt); }
 }
 function GroundOverlayEX_imageMouseDown_(GOobj, evt) {
 	// this happens only once when the mouse button is pressed and held over the displayed element
-	
 	this.clickStarted_ = true;
 	if (GOobj.shouldClickable_(32)) {
 		var info = GOobj.getEventInfo_(evt);
 		google.maps.event.trigger(GOobj, "mousedown", evt, GOobj, info[0], info[1], info[2], info[3]);
 		if (GOobj.manager_ != null) { google.maps.event.trigger(GOobj.manager_, "mousedown", evt, GOobj, info[0], info[1], info[2], info[3]); }
 	}
-	if (GOobj.isEditing_) { 
-		if (GOobj.mousemoveState_ <= 1) {
-			evt.preventDefault();
-			GOobj.mousemovePrevX_ = evt.pageX;
-			GOobj.mousemovePrevY_ = evt.pageY;
-			var edge = GOobj.isAtWhichEdgePoint_(evt);
-			if (GOobj.displayMode_ == "Q") {
-				// acceptable edits for a LLQ are drag and corner resizing only
-				if (edge >= 5) {
-					GOobj.mousemoveState_ = 5;				// LLQ resizing
-					GOobj.mousemoveHandle_ = edge;
-				} else {
-					GOobj.mousemoveState_ = 2;				// dragging
-				}
-			} else {
-				// acceptable edits for a LLB are all
-				if (edge >= 5 && !evt.shiftKey && !GOobj.editingForbidNonrect_) {
-					// non-rectangular resizing a corner
-					GOobj.mousemoveState_ = 5;				// convert to LLQ resizing
-					GOobj.mousemoveHandle_ = edge;
-				} else if (edge > 0) {
-					// resizing an edge or rectangular corner
-					GOobj.mousemoveState_ = 3;
-					if (evt.shiftKey) { GOobj.mousemoveHandle_ = -edge; }	// forced proportional resizing
-					else { GOobj.mousemoveHandle_ = edge; }			// non-proportional resizing
-				} else {
-					// not at edge
-					if (evt.shiftKey) { GOobj.mousemoveState_ = 4; }	// rotating
-					else { GOobj.mousemoveState_ = 2; }			// dragging
-				}
-			}
-		}
-	}
+	if (GOobj.isEditing_) { GroundOverlayEX_imageMouseDown_Editing_(GOobj, evt); }
 }
 function GroundOverlayEX_imageMouseUp_(GOobj, evt) {
 	// this happens only once when the mouse button is resleased when held over the displayed element;
@@ -1416,597 +1380,26 @@ function GroundOverlayEX_imageMouseUp_(GOobj, evt) {
 		google.maps.event.trigger(GOobj, "mouseup", evt, GOobj, info[0], info[1], info[2], info[3]);
 		if (GOobj.manager_ != null) { google.maps.event.trigger(GOobj.manager_, "mouseup", evt, GOobj, info[0], info[1], info[2], info[3]); }
 	}
-	if (GOobj.isEditing_) { 
-		evt.preventDefault();
-		if (GOobj.mousemoveState_ == 5) {
-			// LLQ-mode corners move was completed
-			GOobj.displayMode_ = "Q";
-			GOobj.bounds_ = null;
-			GOobj.editingRecomputeAllGeoLocation_()
-			GOobj.emplaceProperListeners_();
-		} else if (GOobj.mousemoveState_ > 1) {
-			// comption of all other edits
-			GOobj.editingRecomputeAllGeoLocation_();
-		}
-		GOobj.mousemoveState_ = 1;
-		GOobj.mousemovePrevX_ = 0;
-		GOobj.mousemovePrevY_ = 0;
-		GOobj.mousemoveHandle_ = 0;
-	}
+	if (GOobj.isEditing_) { GroundOverlayEX_imageMouseUp_Editing_(GOobj, evt); }
 	if (evt.button == 2) {
 		// was a right click
-		if (GOobj.editable_ && evt.ctrlKey) { 
+		if (GOobj.editable_ && evt.ctrlKey && typeof GOobj.setDoEditing === "function") { 
 			// toggle editing or not editing
 			evt.preventDefault();
 			evt.stopPropagation();
 			GOobj.setDoEditing(!GOobj.doEditing_);
-		} else if (GOobj.isEditing_ && evt.altKey) {
+		} else if (GOobj.isEditing_ && evt.altKey && typeof GOobj.editingDoRevertImage === "function") {
 			// revert image
 			evt.preventDefault();
 			GOobj.editingDoRevertImage();
-		} else {
-			if (GOobj.clickable_ && !GOobj.isEditing_) {
-				var info = GOobj.getEventInfo_(evt);
-				google.maps.event.trigger(GOobj, "rightclick", evt, GOobj, info[0], info[1], info[2], info[3]); 
-				if (GOobj.manager_ != null) { google.maps.event.trigger(GOobj.manager_, "rightclick", evt, GOobj, info[0], info[1], info[2], info[3]); }
-			}
-		}
-	}
-}
-function GroundOverlayEX_imageMouseMove_(GOobj, evt) {
-	// this happens continuously when the mouse is over the displayed element (mouse button pressed or not pressed)
-	if (!GOobj.isEditing_) return;
-	if (GOobj.mousemoveState_ > 0) {
-		evt.preventDefault();
-		switch (GOobj.mousemoveState_) {
-		case 1:
-			// non-mouse-button-pressed mouseover
-			var edge = GOobj.isAtWhichEdgePoint_(evt);
-			if (edge > 0) { GOobj.display_element_.node_.style.cursor = GOobj.useWhichCursor_(evt, edge); }
-			else { GOobj.display_element_.node_.style.cursor = 'move'; }
-			break;
-		case 2:
-			// drag entire image
-			if (evt.buttons == 0) {
-				// a mouseup event was missed
-				GroundOverlayEX_imageMouseUp_(GOobj, evt);
-			} else {
-				evt.preventDefault();
-				var deltaX = Math.round(evt.pageX - GOobj.mousemovePrevX_);
-				var deltaY = Math.round(evt.pageY - GOobj.mousemovePrevY_);
-				var nonborderedLeftTop = GOobj.display_element_.getBoundsLeftTopXY_();
-				nonborderedLeftTop[0] += deltaX;
-				nonborderedLeftTop[1] += deltaY;
-
-				// move the image and the corners
-				GOobj.display_element_.adjustDragging_(deltaX, deltaY, nonborderedLeftTop[0], nonborderedLeftTop[1]);
-
-				if (GOobj.displayMode_ == "Q") {
-					// these three lines are a kludge to force a DOM redraw to fix the fact that transform does not render portions that may be outside the map window
-					GOobj.display_element_.node_.style.display = "none";
-					var height = GOobj.display_element_.node_.offsetHeight;
-					GOobj.display_element_.node_.style.display = "";
-				}
-				
-				// move all the editing elements (corners need to have been moved before calling)
-				for (var i in GOobj.editing_elements_) {
-					GOobj.editing_elements_[i].adjustDragging_(deltaX, deltaY, nonborderedLeftTop[0], nonborderedLeftTop[1]);
-				}
-
-				GOobj.mousemovePrevX_ = evt.pageX;
-				GOobj.mousemovePrevY_ = evt.pageY;
-				google.maps.event.trigger(GOobj, "position_changing", GOobj);
-				if (GOobj.manager_ != null) google.maps.event.trigger(GOobj.manager_, "position_changing", GOobj);
-			}
-			break;
-		case 3:
-			// resize image edges or rectangular corners
-			if (evt.buttons == 0) {
-				// a mouseup event was missed
-				GroundOverlayEX_imageMouseUp_(GOobj, evt);
-			} else {
-				var handle = Math.abs(GOobj.mousemoveHandle_);	
-				var nonborderLeftTop = GOobj.display_element_.getBoundsLeftTopXY_();
-				var nonborderSize = GOobj.display_element_.getBoundsSize_();
-				ar_w2h = nonborderSize[0] / nonborderSize[1];
-
-				var dx = Math.round(evt.pageX - GOobj.mousemovePrevX_);
-				var dy = Math.round(evt.pageY - GOobj.mousemovePrevY_);
-				if (GOobj.rotate_ != 0) {
-					// image is rotated; need to re-calculate the dx and dy based upon the rotation
-					var dist = Math.sqrt(dx*dx + dy*dy);
-					var slope = Math.atan2(-dy, dx);	// atan2 assumes ascending +Y axis; however DOM uses -Y axis so need to correct
-					var rotrad = GOobj.rotate_ * Math.PI / 180;
-					if (GOobj.rotate_ < -90 || GOobj.rotate_ > 90) {
-						if (handle >= 5) {
-							handle += 2;
-							if (handle > 8) handle -= 4;
-						} else {
-							handle += 2;
-							if (handle > 4) handle -= 4;
-						}
-						var aslope = slope - rotrad + Math.PI;
-					} else {
-						var aslope = slope - rotrad;
-					}
-					dx = Math.round(Math.cos(aslope) * dist);
-					dy = -Math.round(Math.sin(aslope) * dist);	// convert from +Y axis to -Y axis
-				}
-
-				// handles:	except +/- 10 of corner: 1= left edge, 2=bottom edge, 3=right edge, 4=top edge
-				//		corners: 5=BL corner, 6=BR corner, 7=TR corner, 8=TL corner
-				switch (handle) {
-				case 1:		// left edge and width; increase in width is negative dx; but also must adjust "left" in the reverse direction
-					nonborderSize[0] = nonborderSize[0] - dx;
-					nonborderLeftTop[0] = nonborderLeftTop[0] + dx;
-					if (GOobj.mousemoveHandle_ < 0) {
-						dy = Math.round(dx / ar_w2h);
-						nonborderSize[1] = nonborderSize[1] - dy;
-						nonborderLeftTop[1] = nonborderLeftTop[1] + dy;
-					}
-					break;
-				case 2:		//  bottom edge and height; increase in height is positive dy
-					nonborderSize[1] = nonborderSize[1] + dy;
-					if (GOobj.mousemoveHandle_ < 0) {
-						dx = Math.round(dy * ar_w2h);
-						nonborderSize[0] = nonborderSize[0] + dx;
-					}
-					break;
-				case 3:		// right edge and width; increase in width is positive dx
-					nonborderSize[0] = nonborderSize[0] + dx;
-					if (GOobj.mousemoveHandle_ < 0) {
-						dy = Math.round(dx / ar_w2h);
-						nonborderSize[1] = nonborderSize[1] + dy;
-					}
-					break;
-				case 4: 	// top edge and height; increase in height is negative dy; but also must adjust "top" in the reverse direction
-					nonborderSize[1] = nonborderSize[1] - dy;
-					nonborderLeftTop[1] = nonborderLeftTop[1] + dy;
-					if (GOobj.mousemoveHandle_ < 0) {
-						dx = Math.round(dy * ar_w2h);
-						nonborderSize[0] = nonborderSize[0] - dx;
-						nonborderLeftTop[0] = nonborderLeftTop[0] + dx;
-					}
-					break;
-				case 5:		// bottom-left proportional; increase in width is negative dx; but also must adjust "left" in the reverse direction; increase in height is negative dy
-					nonborderSize[0] = nonborderSize[0] - dx;
-					nonborderLeftTop[0] = nonborderLeftTop[0] + dx;
-					dy = Math.round(dx / ar_w2h);
-					nonborderSize[1] = nonborderSize[1] - dy;
-					break;
-				case 6:		// bottom-right proportional; increase in width is positive dx; increase in height is positive dy
-					nonborderSize[0] = nonborderSize[0] + dx;
-					dy = Math.round(dx / ar_w2h);
-					nonborderSize[1] = nonborderSize[1] + dy;
-					break;
-				case 7:		// top-right proportional;increase in width is positive dx; increase in height is positive dy; but also must adjust "top" in the reverse direction
-					nonborderSize[0] = nonborderSize[0] + dx;
-					dy = Math.round(dx / ar_w2h);
-					nonborderSize[1] = nonborderSize[1] + dy;
-					nonborderLeftTop[1] = nonborderLeftTop[1] - dy;
-					break;
-				case 8:		// top-left proportional; increase in width is negative dx; but also must adjust "left" in the reverse direction;
-						// increase in height is negative dy; but also must adjust "top" in the reverse direction
-					nonborderSize[0] = nonborderSize[0] - dx;
-					nonborderLeftTop[0] = nonborderLeftTop[0] + dx;
-					dy = Math.round(dx / ar_w2h);
-					nonborderSize[1] = nonborderSize[1] - dy;
-					nonborderLeftTop[1] = nonborderLeftTop[1] + dy;
-					break;
-				}
-
-				GOobj.display_element_.adjustSizingLLB_(nonborderLeftTop[0], nonborderLeftTop[1], nonborderSize[0], nonborderSize[1])
-
-				// move all the editing elements
-				for (var i in GOobj.editing_elements_) {
-					GOobj.editing_elements_[i].adjustSizingLLB_(nonborderLeftTop[0], nonborderLeftTop[1], nonborderSize[0], nonborderSize[1]);
-				}
-				GOobj.mousemovePrevX_ = evt.pageX;
-				GOobj.mousemovePrevY_ = evt.pageY;
-				google.maps.event.trigger(GOobj, "shape_changing", GOobj);
-				if (GOobj.manager_ != null) google.maps.event.trigger(GOobj.manager_, "shape_changing", GOobj);
-			}
-			break;
-		case 4:
-			// rotate image only for LLB-mode
-			if (evt.buttons == 0) {
-				// a mouseup event was missed
-				GroundOverlayEX_imageMouseUp_(GOobj, evt);
-			} else {
-				// remember evt.pageX,Y are in the context of entire browser window client area; 
-				// GOobj.display_element_.getPositionXY_ is in the context of Map Div			
-				var rect = GOobj.display_element_.node_.getBoundingClientRect();
-				var centerX = rect.left + Math.round(rect.width / 2);
-				var centerY = rect.top + Math.round(rect.height / 2);
-				var prevMouseA = Math.atan2(GOobj.mousemovePrevY_ - centerY, GOobj.mousemovePrevX_ - centerX);
-				var mouseA = Math.atan2(evt.pageY - centerY, evt.pageX - centerX);
-				var dArad = mouseA - prevMouseA;
-				var dAdeg = dArad * 180 / Math.PI;
-				var newRot = GOobj.rotate_ - dAdeg;	// note that rotation for a GroundOverlay is CCW
-				if (newRot > 180) newRot-=360;
-				else if (newRot < -180) newRot+=360;
-				GOobj.rotate_ = newRot;
-				GOobj.display_element_.setRotation_();
-				for (var i in GOobj.editing_elements_) { GOobj.editing_elements_[i].adjustRotationLLB_(); }
-				GOobj.mousemovePrevX_ = evt.pageX;
-				GOobj.mousemovePrevY_ = evt.pageY;
-				google.maps.event.trigger(GOobj, "shape_changing", GOobj);
-				if (GOobj.manager_ != null) google.maps.event.trigger(GOobj.manager_, "shape_changing", GOobj);
-			}
-			break;
-		case 5:
-			// non-rectangular resize image corners only for LLQ-mode (or will force-convert a LLB into a LLQ)
-			if (evt.buttons == 0) {
-				// a mouseup event was missed
-				GroundOverlayEX_imageMouseUp_(GOobj, evt);
-			} else {
-				// handles:	except +/- 10 of corner: 1= left edge, 2=bottom edge, 3=right edge, 4=top edge
-				//		corners: 5=BL corner, 6=BR corner, 7=TR corner, 8=TL corner
-				var dx = Math.round(evt.pageX - GOobj.mousemovePrevX_);
-				var dy = Math.round(evt.pageY - GOobj.mousemovePrevY_);
-				GOobj.display_element_.resizeLLQbyDeltas_(Math.abs(GOobj.mousemoveHandle_), dx, dy);
-
-				// resize appropriate editing elements
-				var bb = GOobj.display_element_.getBoundsBox_();	// return is BL, TR, size				
-				for (var i in GOobj.editing_elements_) {
-					GOobj.editing_elements_[i].adjustSizingLLQ_(Math.abs(GOobj.mousemoveHandle_), dx, dy, bb);
-				}
-				GOobj.mousemovePrevX_ = evt.pageX;
-				GOobj.mousemovePrevY_ = evt.pageY;
-				google.maps.event.trigger(GOobj, "shape_changing", GOobj);
-				if (GOobj.manager_ != null) google.maps.event.trigger(GOobj.manager_, "shape_changing", GOobj);
-			}
-			break;
+		} else if (GOobj.clickable_ && !GOobj.isEditing_) {
+			var info = GOobj.getEventInfo_(evt);
+			google.maps.event.trigger(GOobj, "rightclick", evt, GOobj, info[0], info[1], info[2], info[3]); 
+			if (GOobj.manager_ != null) { google.maps.event.trigger(GOobj.manager_, "rightclick", evt, GOobj, info[0], info[1], info[2], info[3]); }
 		}
 	}
 }
 
-////////////////////////
-// extended capabilities for editing a GroundOverlayEX on-screen
-// public methods
-////////////////////////
-GroundOverlayEX.prototype['getEditable'] = GroundOverlayEX.prototype.getEditable;
-GroundOverlayEX.prototype.getEditable = function() {
-	// returns whether editing is allowed or not allowed
-	return this.editable_;
-}
-GroundOverlayEX.prototype['setEditable'] = GroundOverlayEX.prototype.setEditable;
-GroundOverlayEX.prototype.setEditable = function(allowed) {
-	// true=the GroundOverlayEX is allowed to be edited; actual editing is activated either by right-clicking on the image or programatically by calling this.setEditable();
-	// false=do not allow editing and terminate any current editing
-	if (allowed != 0 || allowed == true) { 
-		this.editable_ = true;
-	} else {
-		this.setDoEditing(false);
-		this.editable_ = false;
-	}
-	this.emplaceProperListeners_();
-	return true;
-}
-GroundOverlayEX.prototype['setEditableForbidNonrect'] = GroundOverlayEX.prototype.setEditableForbidNonrect;
-GroundOverlayEX.prototype.setEditableForbidNonrect = function(pForbid) {
-	if (!this.editable_ || this.isEditing_) return false;
-	this.editingForbidNonrect_ = pForbid;
-	return true;
-}
-GroundOverlayEX.prototype['getDoEditing'] = GroundOverlayEX.prototype.getDoEditing;
-GroundOverlayEX.prototype.getDoEditing = function() {
-	// returns whether the GroundOverlayEX is currently being edited or not
-	return this.isEditing_;
-}
-GroundOverlayEX.prototype['setDoEditing'] = GroundOverlayEX.prototype.setDoEditing;
-GroundOverlayEX.prototype.setDoEditing = function(pAllowed) {
-	// true=programatically activate editing of the GroundOverlayEx image; will be ignored if this.setEditable() has not been set to true prior to this call
-
-	if (!this.editable_) { this.doEditing_ = false; return false; }
-	// preserve the editing desired state for re-entrance purposes in case the passed parameter url is not yet loaded
-	if (pAllowed != 0 || pAllowed == true) { this.doEditing_ = true; }
-	else { this.doEditing_ = false; }
-	if (this.display_element_ == null) { return false; }	// this does get called during constructor options evaluation
-	if (!this.display_element_.isMapped_()) { return false; }	
-	if (this.doEditing_ == this.isEditing_) { return true; }
-
-	// is the passed parameter url image loaded?
-	var r = this.zoomArray_.whichIndexPerUrl(this.url_);
-	if (this.imgsLoaded_[r] == 0) {
-		// no, must initiate loading and wait for it
-		this.doLoadImageNumber_(r);
-		return true;
-	}
-
-	var de = this.display_element_.node_;
-	if (this.doEditing_) {
-		// add the editing border and make appropriate adjustments to the this.display_element_
-		this.display_element_.adjustForEditing_(true);
-
-		// get info for the editing elements
-		var nonborderLeftTop = this.display_element_.getBoundsLeftTopXY_();
-		var nonborderSize = this.display_element_.getBoundsSize_();
-		var nonborderBB = this.display_element_.getBoundsBox_();	// returns: BL, TR, size
-
-		// release any prior array to garbage collection before allocating a new array for the editing elements
-		var panes = this.getPanes();
-		this.editing_elements_ = null;
-		this.editing_elements_ = [];
-		if (this.displayMode_ == "B") {
-			// LatLngBounds-mode;
-			// make a revert-to copy of the this.display_element_
-			this.editing_revert_element_ = new GroundOverlayEX_element_imageLLB(this, null);
-			this.editing_revert_element_.copy_(this.display_element_);
-
-			// create various editing aids
-			this.editing_elements_[0] = new GroundOverlayEX_element_bounds(this, nonborderSize[0], nonborderSize[1]);
-			this.editing_elements_[1] = new GroundOverlayEX_element_region(this, nonborderBB[0][0], nonborderBB[1][1], nonborderBB[2][0], nonborderBB[2][1]);
-			this.editing_elements_[2] = new GroundOverlayEX_element_editing(this, nonborderSize[0], nonborderSize[1]);
-			this.editing_elements_[3] = new GroundOverlayEX_element_centerspot(this, nonborderSize[0], nonborderSize[1]);
-
-			// need to re-order the overlays to ensure the Displayed Element remains on-top
-			this.display_element_.removeFromMapLayer_();
-			this.editing_elements_[0].addToMapLayer_(panes.overlayLayer);
-			this.editing_elements_[1].addToMapLayer_(panes.overlayLayer);
-			this.editing_elements_[2].addToMapLayer_(panes.overlayMouseTarget);
-			this.display_element_.addToMapLayer_();
-			this.editing_elements_[3].addToMapLayer_(panes.overlayMouseTarget);
-				
-			// clientLeft and clientTop will now be properly set for all elements after the appendChild
-			for (var i in this.editing_elements_) {
-				this.editing_elements_[i].adjustEditingLLB_(nonborderLeftTop[0], nonborderLeftTop[1]);
-			}
-
-		} else {
-			// LatLngQuad-mode;
-			// make a revert-to copy of the this.display_element_
-			this.editing_revert_element_ = new GroundOverlayEX_element_imageLLQ(this, null);
-			this.editing_revert_element_.copy_(this.display_element_);
-
-			// create various editing aids
-			this.editing_elements_[0] = new GroundOverlayEX_element_region(this, nonborderBB[0][0], nonborderBB[1][1], nonborderBB[2][0], nonborderBB[2][1]);
-			this.editing_elements_[1] = new GroundOverlayEX_element_border(this, nonborderBB[2][0], nonborderBB[2][1]);
-			this.editing_elements_[2] = new GroundOverlayEX_element_editing(this, nonborderBB[2][0], nonborderBB[2][1]);
-			this.editing_elements_[3] = new GroundOverlayEX_element_centerspot(this, nonborderBB[2][0], nonborderBB[2][1]);
-			this.editing_elements_[4] = new GroundOverlayEX_element_centerspotalt(this, nonborderBB[2][0], nonborderBB[2][1]);
-			//this.editing_elements_[5] = new GroundOverlayEX_element_bounds(this, nonborderSize[0], nonborderSize[1]);
-
-			// need to re-order the overlays to ensure the Displayed Element remains on-top
-			this.display_element_.removeFromMapLayer_();
-			//this.editing_elements_[5].addToMapLayer_(panes.overlayLayer);
-			this.editing_elements_[0].addToMapLayer_(panes.overlayLayer);
-			this.editing_elements_[1].addToMapLayer_(panes.overlayMouseTarget);
-			this.editing_elements_[2].addToMapLayer_(panes.overlayMouseTarget);
-			this.display_element_.addToMapLayer_();
-			this.editing_elements_[3].addToMapLayer_(panes.overlayMouseTarget);
-			this.editing_elements_[4].addToMapLayer_(panes.overlayMouseTarget);
-
-			// clientLeft and clientTop will now be properly set for all elements after the appendChild
-			for (var i in this.editing_elements_) {
-				this.editing_elements_[i].adjustEditingLLQ_(nonborderBB);
-			}
-		}
-
-		// zIndex changes must be done after this.isEditing_ is properly set
-		this.isEditing_ = this.doEditing_;
-		this.doZindex_();
-		for (var i in this.editing_elements_) {
-			this.editing_elements_[i].doZindex_();
-		}
-		google.maps.event.trigger(this, "editing_started", this);
-		if (this.manager_ != null) google.maps.event.trigger(this.manager_, "editing_started", this);		
-	} else {
-		// eliminate all the editing elements
-		for (var i in this.editing_elements_) {
-			this.editing_elements_[i].destroy_();
-			this.editing_elements_[i] = null;
-		}
-		this.editing_elements_ = null;
-		if (this.editing_revert_element_ != null) {
-			this.editing_revert_element_.destroy_();
-			this.editing_revert_element_ = null;
-		}
-
-		// remove the editing border and make appropriate adjustments to the this.display_element_
-		this.display_element_.adjustForEditing_(false);
-
-		// zIndex changes must be done after this.isEditing_ is properly set
-		this.isEditing_ = this.doEditing_;
-		this.doZindex_();
-		google.maps.event.trigger(this, "editing_done", this);
-		if (this.manager_ != null) google.maps.event.trigger(this.manager_, "editing_done", this);
-	}
-	this.emplaceProperListeners_();	
-	return true;
-}
-GroundOverlayEX.prototype['setEditingAidsVisible'] = GroundOverlayEX.prototype.setEditingAidsVisible;
-GroundOverlayEX.prototype.setEditingAidsVisible = function(pAids, pVisible) {
-	// pAids: 1=center, 2=diagonalcenter (LLQ), 4=bounds (LLB), 8=regionBounds
-	if (!this.editable_ && !this.isEditing_) return false;
-	for (var i in this.editing_elements_) {
-		if (	(this.editing_elements_[i].id_ == "sp1" && (pAids & 1) != 0) ||
-			(this.editing_elements_[i].id_ == "sp2" && (pAids & 2) != 0) ||
-			(this.editing_elements_[i].id_ == "bnd" && (pAids & 4) != 0) ||
-			(this.editing_elements_[i].id_ == "rgn" && (pAids & 8) != 0)) {
-				this.editing_elements_[i].setVisible_(pVisible);
-		}
-	}
-	return true;
-
-}
-GroundOverlayEX.prototype['getEditedIsCropped'] = GroundOverlayEX.prototype.getEditedIsCropped;
-GroundOverlayEX.prototype.getEditedIsCropped = function() {
-	// returns whether the GroundOverlayEX has been set for cropping of the image
-	return this.cropping_;
-}
-GroundOverlayEX.prototype['getEditedImageInfo'] = GroundOverlayEX.prototype.getEditedImageInfo;
-GroundOverlayEX.prototype.getEditedImageInfo = function() {
-	return this.display_element_.getImageInfo_();
-}
-GroundOverlayEX.prototype['editingDoRevertImage'] = GroundOverlayEX.prototype.editingDoRevertImage;
-GroundOverlayEX.prototype.editingDoRevertImage = function() {
-	if (!this.isEditing_ || !this.display_element_.isMapped_()) return false;
-	if (this.editing_revert_element_ == null) return false;
-
-	if (this.displayMode_ == "B") {
-		this.display_element_.restoreFrom_(this.editing_revert_element_);
-		var nonborderSize = this.display_element_.getBoundsSize_();
-		var nonborderLeftTop = this.display_element_.getBoundsLeftTopXY_();
-
-		// make proper changes to editing div's if present
-		for (var i in this.editing_elements_) {
-			// always do size before position
-			this.editing_elements_[i].adjustRevertLLB_(nonborderLeftTop[0], nonborderLeftTop[1], nonborderSize[0], nonborderSize[1]);
-		}
-	} else {
-		this.display_element_.restoreFrom_(this.editing_revert_element_);
-
-		// make proper changes to editing div's if present using the results of the corners just set
-		var bb = this.display_element_.getBoundsBox_();		// returns BL, TR, size
-		for (var i in this.editing_elements_) {
-			this.editing_elements_[i].adjustRevertLLQ_(bb);
-		}
-	}
-	google.maps.event.trigger(this, "editing_reverted", this);
-	if (this.manager_ != null) google.maps.event.trigger(this.manager_, "editing_reverted", this);
-}
-
-////////////////////////
-// extended capabilities for editing a GroundOverlayEX on-screen
-// private methods
-////////////////////////
-GroundOverlayEX.prototype.isAtWhichEdgePoint_ = function(evt) {
-	// handles:	except +/- 10 of corner: 1= left edge, 2=bottom edge, 3=right edge, 4=top edge
-	//		corners: 5=BL corner, 6=BR corner, 7=TR corner, 8=TL corner
-	// DANGER: for firefox only use layerX and layerY; for all other browsers, use offsetX and offsetY
-	var edge = 0;
-	var imgX, imgY;
-	if (evt.offsetX == null ) { // Firefox
-   		imgX = evt.layerX;
-   		imgY = evt.layerY;
-	} else {                       // Other browsers
-  		imgX = evt.offsetX;
-   		imgY = evt.offsetY;
-	}
-
-	de = this.display_element_.node_;
-	if (imgX <= de.clientLeft + 4) {
-		if (imgY <= de.clientTop + 20) edge = 8;
-		else if (imgY >= de.offsetHeight - de.clientTop - 20) edge = 5;
-		else edge = 1;
-	}
-	else if (imgX >= de.offsetWidth - de.clientLeft - 4) {
-		if (imgY <= de.clientTop + 20) edge = 7;
-		else if (imgY >= de.offsetHeight - de.clientTop - 20) edge = 6;
-		else edge = 3;
-	}
-	else if (imgY <= de.clientTop + 4) {
-		if (imgX <= de.clientLeft + 20) edge = 8;
-		else if (imgX >= de.offsetWidth - de.clientTop - 20) edge = 7;
-		else edge = 4;
-	}
-	else if (imgY >= de.offsetHeight - de.clientTop - 4) {
-		if (imgX <= de.clientLeft + 20) edge = 5;
-		else if (imgX >= de.offsetWidth - de.clientTop - 20) edge = 6;
-		else edge = 2;
-	}
-	return edge;
-}
-GroundOverlayEX.prototype.useWhichCursor_ = function(evt, edge) {
-	// handles:	except +/- 10 of corner: 1= left edge, 2=bottom edge, 3=right edge, 4=top edge
-	//		corners: 5=BL corner, 6=BR corner, 7=TR corner, 8=TL corner
-	// given the missing Firefox cursors, using "cell" for non-rectangular dragging
-	if (this.displayMode_ == "Q") {
-		if (edge >= 5) { return "cell"; }
-		else { return "move"; }
-	} else {
-		if (edge >= 5 && !this.editingForbidNonrect_ && !evt.shiftKey) { return "cell"; }
-		else {
-			// GOEX_DIRECTIONS: clockwise from left edge
-			if (edge >= 5) choice = ((edge - 5) * 2) + 1;
-			else choice = (edge - 1) * 2;
-
-			var rot = this.rotate_;
-			if (rot < 0) rot = 360 + rot;
-			if (rot > 180) rot -= 180;
-			rot += 22.49;
-			shift = Math.floor(rot / 45);
-			choice += shift;
-			if (choice > 7) choice -= 8;
-			return GOEX_CURSORDIRECTIONS[choice];
-		}
-	}
-	return "move";
-}
-GroundOverlayEX.prototype.editingRecomputeAllGeoLocation_ = function() {
-	// need to update this.position, this.bounds_, this.regionBounds_, this.llq_, this.llqType_
-	if (!this.isEditing_) return;
-	var i, el, posX, posY;
-	var overlayProjection = this.getProjection();
-
-	// calculate the new position
-	var center = this.display_element_.getPositionXY_();
-	var gmpoint = new google.maps.Point(center[0], center[1]);
-	this.position = null;
-	this.position = overlayProjection.fromDivPixelToLatLng(gmpoint);
-
-	if (this.displayMode_ == "B") {
-		el = null;
-		for (i in this.editing_elements_) { if (this.editing_elements_[i].id_ == "bnd") { el = this.editing_elements_[i]; } }
-		if (el != null) {
-			// calculate the latlngBounds (non-rotated rectangular); order is: SW, NE
-			var nonborderLeftTop = el.getBoundsLeftTopXY_();
-			var nonborderSize = el.getBoundsSize_();
-
-			gmpoint = new google.maps.Point(nonborderLeftTop[0], nonborderLeftTop[1]+ nonborderSize[1]);	// W=left, S=bottom
- 			var swLatlng = overlayProjection.fromDivPixelToLatLng(gmpoint);
-
-			gmpoint = new google.maps.Point(nonborderLeftTop[0] + nonborderSize[0], nonborderLeftTop[1]);	// E=right, N=top
- 			var neLatlng = overlayProjection.fromDivPixelToLatLng(gmpoint);
-
-			this.bounds_ = null;
-			this.bounds_ = new google.maps.LatLngBounds(swLatlng, neLatlng);
-
-			// calculate the rectangular rotated latlngQuad
-			this.computeLLQfromBounds_();
-		}
-	} else {
-		// no bounds for a LLQ-mode
-		this.bounds_ = null;
-
-		// calculate the new latlngQuad from the new corners
-		var corners = this.display_element_.getCornersXY_();
-		var gmpoint = new google.maps.Point(corners[0][0],corners[0][1]);
- 		var blLatlng = overlayProjection.fromDivPixelToLatLng(gmpoint);
-
-		gmpoint = new google.maps.Point(corners[1][0], corners[1][1]);
- 		var brLatlng = overlayProjection.fromDivPixelToLatLng(gmpoint);
-
-		gmpoint = new google.maps.Point(corners[2][0], corners[2][1]);
- 		var trLatlng = overlayProjection.fromDivPixelToLatLng(gmpoint);
-
-		gmpoint = new google.maps.Point(corners[3][0], corners[3][1]);
- 		var tlLatlng = overlayProjection.fromDivPixelToLatLng(gmpoint);
-
-		if (this.llq_ != null) this.llq_.destroy();
-		this.llq_ = null;
-		this.llq_ = new LatLngQuad(blLatlng, brLatlng, trLatlng, tlLatlng);
-		this.llqType_ = "N";
-	}
-
-	// calculate the regionBounds; order is: SW, NE
-	el = null;
-	for (i in this.editing_elements_) { if (this.editing_elements_[i].id_ == "rgn") { el = this.editing_elements_[i]; } }
-	if (el != null) {
-		var nonborderLeftTop = el.getBoundsLeftTopXY_();
-		var nonborderSize = el.getBoundsSize_();
-
-		gmpoint = new google.maps.Point(nonborderLeftTop[0], nonborderLeftTop[1]+ nonborderSize[1]);	// W=left, S=bottom
- 		var swLatlng2 = overlayProjection.fromDivPixelToLatLng(gmpoint);
-
-		gmpoint = new google.maps.Point(nonborderLeftTop[0] + nonborderSize[0], nonborderLeftTop[1]);	// E=right, N=top
- 		var neLatlng2 = overlayProjection.fromDivPixelToLatLng(gmpoint);
-
-		this.regionBounds_ = null;
-		this.regionBounds_ = new google.maps.LatLngBounds(swLatlng2, neLatlng2);
-	}
-}
 
 //////////////////////////////////////////////////////////////////////////////
 // GOEX_element_* classes
@@ -2265,130 +1658,6 @@ GroundOverlayEX_element_imageLLB.prototype.getBoundsBox_ = function() {
 	return theResults;
 }
 
-// the following methods are used solely for editing, and need less memory optimization
-GroundOverlayEX_element_imageLLB.prototype.copy_ = function(pGOEX_el_LLB) {
-	if (pGOEX_el_LLB.img_ == null) return false;
-
-	this.nonborderLeft_ = pGOEX_el_LLB.nonborderLeft_;
-	this.nonborderTop_ = pGOEX_el_LLB.nonborderTop_;
-	this.nonborderWidth_ = pGOEX_el_LLB.nonborderWidth_;
-	this.nonborderHeight_ = pGOEX_el_LLB.nonborderHeight_;
-	this.rot_ = pGOEX_el_LLB.rot_;
-	return true;
-}
-GroundOverlayEX_element_imageLLB.prototype.restoreFrom_ = function(pGOEX_el_LLB) {
-	if (this.img_ == null || this.node_ == null) return false;
-
-	this.nonborderLeft_ = pGOEX_el_LLB.nonborderLeft_;
-	this.nonborderTop_ = pGOEX_el_LLB.nonborderTop_;
-	this.nonborderWidth_ = pGOEX_el_LLB.nonborderWidth_;
-	this.nonborderHeight_ = pGOEX_el_LLB.nonborderHeight_;
-	this.rot_ = pGOEX_el_LLB.rot_;
-
-	this.node_.style.width = this.nonborderWidth_ + "px";
-	this.node_.style.height = this.nonborderHeight_ + "px";
-	this.node_.style.left = (this.nonborderLeft_ - this.node_.clientLeft) + "px";
-	this.node_.style.top = (this.nonborderTop_ - this.node_.clientLeft) + "px";
-
-	this.parentGOEX_.rotate_ = -this.rot_;		// GroundOverlayEX stores rotation as degrees counter-clockwise
-	this.setRotation_();
-	return true;
-}
-GroundOverlayEX_element_imageLLB.prototype.adjustForEditing_ = function(pEditingEnabled) {
-	var nonborderLeft = this.node_.offsetLeft + this.node_.clientLeft;
-	var nonborderTop = this.node_.offsetTop + this.node_.clientTop;
-
-	if (pEditingEnabled) {
-		this.node_.style.borderWidth = '2px';
-		this.node_.style.borderColor = 'Fuchsia';
-		this.node_.style.left = (nonborderLeft - 2) + 'px';	// de.clientTop and de.clientLeft will not have yet been reset
- 		this.node_.style.top = (nonborderTop - 2) + 'px';
-	} else {
-		this.node_.style.borderWidth = '0px';
-		this.node_.style.borderColor = 'Transparent';
-		this.node_.style.left = nonborderLeft + 'px';
- 		this.node_.style.top = nonborderTop + 'px';
-	}
-}
-GroundOverlayEX_element_imageLLB.prototype.adjustSizingLLB_ = function(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight) {
-	this.nonborderWidth_ = pNonBorderWidth;
-	this.nonborderHeight_ = pNonBorderHeight;
-	this.node_.style.width = pNonBorderWidth + "px";
-	this.node_.style.height = pNonBorderHeight + "px";
-
-	this.nonborderLeft_ = pNonBorderLeft;
-	this.nonborderTop_ = pNonBorderTop;
-	this.node_.style.left = (pNonBorderLeft - this.node_.clientLeft) + "px";
-	this.node_.style.top = (pNonBorderTop - this.node_.clientLeft) + "px";
-}	
-GroundOverlayEX_element_imageLLB.prototype.adjustDragging_ = function(pDeltaX, pDeltaY, pNonBorderLeft, pNonBorderTop) {
-	this.nonborderLeft_ = pNonBorderLeft;
-	this.nonborderTop_ = pNonBorderTop;
-	this.node_.style.left = (pNonBorderLeft - this.node_.clientLeft) + "px";
-	this.node_.style.top = (pNonBorderTop - this.node_.clientLeft) + "px";
-}
-GroundOverlayEX_element_imageLLB.prototype.resizeLLQbyDeltas_ = function(pHandle, pDeltaX, pDeltaY) {
-	// this will indicate a need to convert the LLB to a LLQ
-	// ???
-}
-GroundOverlayEX_element_imageLLB.prototype.getImageInfo_ = function() {
-	// [0],[1]=Original width,height; [2],[3]=Cropped fromLeft,fromBottom;
-	// [4],[5]=Cropped toWidth,toHeight; [6],[7]=Current width,height;
-	// [8],[9]=Bounds left,top; [10],[11]=Bounds width,height;
-	// [12],[13]=BoundsBox left,top; [14],[15]=BoundsBox width,height;
-	// [16],[17]=Current center x,y; [18],[19]=Current diagonals x,y;
-	// [20],[21]=Corner bottom-left X,y; [22],[23]=Corner bottom-right x,y;
-	// [24],[25]=Corner top-right X,y; [26],[27]=Corner top-left x,y
-	// [28] = rotation (deg clockwise)
-
-	var corners = this.getCornersXY_();
-	var bb = this.getBoundsBox_();	// return order: BL, TR, size
-
-	var theResults = [];
-	theResults[0] = this.parentGOEX_.origImgWidth_;
-	theResults[1] = this.parentGOEX_.origImgHeight_;
-	if (this.cropping_) {
-		theResults[2] = this.parentGOEX_.cropBase_[0];
-		theResults[3] = this.parentGOEX_.cropBase_[1];
-		theResults[4] = this.parentGOEX_.cropBase_[2];
-		theResults[5] = this.parentGOEX_.cropBase_[3];
-	} else {
-		theResults[2] = 0;
-		theResults[3] = 0;
-		theResults[4] = 0;
-		theResults[5] = 0;
-	}
-	theResults[6] = this.node_.clientWidth;
-	theResults[7] = this.node_.clientHeight;
-
-	theResults[8] = (this.node_.offsetLeft + this.node_.clientLeft);
-	theResults[9] = (this.node_.offsetTop + this.node_.clientTop);
-	theResults[10] = this.node_.clientWidth;
-	theResults[11] = this.node_.clientHeight;
-
-	theResults[12] = bb[0][0];
-	theResults[13] = bb[1][1];
-	theResults[14] = bb[2][0];
-	theResults[15] = bb[2][1];
-
-	theResults[16] = corners[3][0] + Math.round(theResults[6] / 2);
-	theResults[17] = corners[3][1] + Math.round(theResults[7] / 2);
-	theResults[18] = theResults[12];
-	theResults[19] = theResults[13];
-
-	theResults[20] = corners[0][0];	// BL, BR, TR, TL order
-	theResults[21] = corners[0][1];
-	theResults[22] = corners[1][0];
-	theResults[23] = corners[1][1];
-	theResults[24] = corners[2][0];
-	theResults[25] = corners[2][1];
-	theResults[26] = corners[3][0];
-	theResults[27] = corners[3][1];
-
-	theResults[28] = this.rot_;	// clockwise
-	return theResults;
-}
-
 /**
  * @constructor
  */
@@ -2643,11 +1912,11 @@ GroundOverlayEX_element_imageLLQ.prototype.doResetNodeSizePosition_ = function()
 	// in order to handle Firefox transform bugs for large images, first resize then move the source (non-transformed) 
 	// node to the center of the map DIV
 	// this gets called everytime GOEX draw() gets called so be more explicit about garbage collection
-	var mapSize = this.parentGOEX_.getMapDivSize_();
-	//mapSize[0] =  Math.round(mapSize[0] * .75);
-	//mapSize[1] =  Math.round(mapSize[1] * .75);
+	/*var mapSize = this.parentGOEX_.getMapDivSize_();
+	mapSize[0] =  Math.round(mapSize[0] * .75);
+	mapSize[1] =  Math.round(mapSize[1] * .75);
 
-	/*if (this.node_.width > mapSize[0] || this.node_.height > mapSize[1] || 
+	if (this.node_.width > mapSize[0] || this.node_.height > mapSize[1] || 
 	    this.nonborderWidth_ > mapSize[0] || this.nonborderHeight_ > mapSize[1]) {
 		intWidth1 = mapSize[0];
 		intHeight1 = Math.round(this.node_.height * (intWidth1 / this.node_.width));
@@ -2674,170 +1943,6 @@ GroundOverlayEX_element_imageLLQ.prototype.doResetNodeSizePosition_ = function()
 	this.node_.style.left = (this.nonborderLeft_ - this.node_.clientLeft) + 'px';
  	this.node_.style.top = (this.nonborderTop_ - this.node_.clientTop) + 'px';
 }
-
-// the following methods are used solely for editing, and need less memory optimization
-GroundOverlayEX_element_imageLLQ.prototype.copy_ = function(pGOEX_el_LLQ) {
-	if (pGOEX_el_LLQ.img_ == null) return false;
-
-	this.nonborderLeft_ = pGOEX_el_LLQ.nonborderLeft_;
-	this.nonborderTop_ = pGOEX_el_LLQ.nonborderTop_;
-	this.nonborderWidth_ = pGOEX_el_LLQ.nonborderWidth_;
-	this.nonborderHeight_ = pGOEX_el_LLQ.nonborderHeight_;
-
-	if (this.corners_ != null) {
-		// explicitly remove the prior corners array object
-		for (var i in this.corners_) { this.corners_[i] = null; }
-		this.corners_ = null;
-	}
-	this.corners_ = [];
-	for (var i in pGOEX_el_LLQ.corners_) {
-		this.corners_[i] = pGOEX_el_LLQ.corners_[i].slice(0);
-	}
-	return true;
-}
-GroundOverlayEX_element_imageLLQ.prototype.restoreFrom_ = function(pGOEX_el_LLQ) {
-	if (this.img_ == null || this.node_ == null) return false;
-
-	this.nonborderLeft_ = pGOEX_el_LLQ.nonborderLeft_;
-	this.nonborderTop_ = pGOEX_el_LLQ.nonborderTop_;
-	this.nonborderWidth_ = pGOEX_el_LLQ.nonborderWidth_;
-	this.nonborderHeight_ = pGOEX_el_LLQ.nonborderHeight_;
-
-	if (this.corners_ != null) {
-		// explicitly remove the prior corners array object
-		for (var i in this.corners_) { this.corners_[i] = null; }
-		this.corners_ = null;
-	}
-	this.corners_ = []; 
-	for (var i in pGOEX_el_LLQ.corners_) {
-		this.corners_[i] = pGOEX_el_LLQ.corners_[i].slice(0);
-	}
-
-	this.node_.style.width = this.nonborderWidth_ + "px";
-	this.node_.style.height = this.nonborderHeight_ + "px";
-	this.node_.style.left = (this.nonborderLeft_ - this.node_.clientLeft) + 'px';
- 	this.node_.style.top = (this.nonborderTop_ - this.node_.clientTop) + 'px';
-
-	// regardless of the restore, position the source node properly
-	this.doResetNodeSizePosition_();
-
-	// draw the transformation
-	this.prepDoQuadrilateralTransform_();
-	return true;
-}
-GroundOverlayEX_element_imageLLQ.prototype.adjustForEditing_ = function(pEditingEnabled) {
-	// not required for a LLQ
-}
-GroundOverlayEX_element_imageLLQ.prototype.adjustSizingLLB_ = function(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight) {
-	// ignored for a LatLngQuad-mode element
-	console.log("GOEX_el_imgLLQ.adjustSizingLLB_ SHOULD NOT HAVE BEEN CALLED");
-}
-GroundOverlayEX_element_imageLLQ.prototype.setRotation_ = function() {
-	// ignored for a LatLngQuad-mode element
-	console.log("GOEX_el_imgLLQ.setRotation_ SHOULD NOT HAVE BEEN CALLED");
-}
-GroundOverlayEX_element_imageLLQ.prototype.adjustDragging_ = function(pDeltaX, pDeltaY, pNonBorderLeft, pNonBorderTop) {
-	// moving the underlying hidden image will move the transformed image
-	this.nonborderLeft_ = pNonBorderLeft;
-	this.nonborderTop_ = pNonBorderTop;
-	this.node_.style.left = (pNonBorderLeft - this.node_.clientLeft) + "px";
-	this.node_.style.top = (pNonBorderTop - this.node_.clientLeft) + "px";
-
-	// also need to move all the corners
-	for (var i=0; i<4; i++) {
-		this.corners_[i][0] += pDeltaX;
-		this.corners_[i][1] += pDeltaY;
-	}
-}
-GroundOverlayEX_element_imageLLQ.prototype.resizeLLQbyDeltas_ = function(pHandle, pDeltaX, pDeltaY) {
-	// handle codes: 5=BL, 6=BR, 7=TR, 8=TL
-	switch (pHandle) {
-	case 5:		// bottom left corner
-		var BLpt = this.corners_[0];
-		BLpt[0] = BLpt[0] + pDeltaX;
-		BLpt[1] = BLpt[1] + pDeltaY;
-		this.corners_[0] = BLpt;
-		break;
-	case 6:		// bottom right corner
-		var BRpt = this.corners_[1];
-		BRpt[0] = BRpt[0] + pDeltaX;
-		BRpt[1] = BRpt[1] + pDeltaY;
-		this.corners_[1] = BRpt;
-		break;
-	case 7:		// top right corner
-		var TRpt = this.corners_[2];
-		TRpt[0] = TRpt[0] + pDeltaX;
-		TRpt[1] = TRpt[1] + pDeltaY;
-		this.corners_[2] = TRpt;
-		break;
-	case 8:		// top left corner
-		var TLpt = this.corners_[3];
-		TLpt[0] = TLpt[0] + pDeltaX;
-		TLpt[1] = TLpt[1] + pDeltaY;
-		this.corners_[3] = TLpt;
-		break;
-	}
-	this.prepDoQuadrilateralTransform_();
-}
-GroundOverlayEX_element_imageLLQ.prototype.getImageInfo_ = function() {
-	// [0],[1]=Original width,height; [2],[3]=Cropped fromLeft,fromBottom;
-	// [4],[5]=Cropped toWidth,toHeight; [6],[7]=Current width,height;
-	// [8],[9]=Bounds left,top; [10],[11]=Bounds width,height;
-	// [12],[13]=BoundsBox left,top; [14],[15]=BoundsBox width,height;
-	// [16],[17]=Current center x,y; [18],[19]=Current diagonals x,y;
-	// [20],[21]=Corner bottom-left X,y; [22],[23]=Corner bottom-right x,y;
-	// [24],[25]=Corner top-right X,y; [26],[27]=Corner top-left x,y
-	// [28] = effective/approximate rotation (deg clockwise)
-
-	var bb = this.getBoundsBox_();	// return order: BL, TR, size
-
-	var theResults = [];
-	theResults[0] = this.parentGOEX_.origImgWidth_;
-	theResults[1] = this.parentGOEX_.origImgHeight_;
-	if (this.cropping_) {
-		theResults[2] = this.parentGOEX_.cropBase_[0];
-		theResults[3] = this.parentGOEX_.cropBase_[1];
-		theResults[4] = this.parentGOEX_.cropBase_[2];
-		theResults[5] = this.parentGOEX_.cropBase_[3];
-	} else {
-		theResults[2] = 0;
-		theResults[3] = 0;
-		theResults[4] = 0;
-		theResults[5] = 0;
-	}
-	var stuff = this.computeSizeOfQuad_();
-	theResults[6] = stuff[0];
-	theResults[7] = stuff[1];
-
-	theResults[8] = (this.node_.offsetLeft + this.node_.clientLeft);
-	theResults[9] = (this.node_.offsetTop + this.node_.clientTop);
-	theResults[10] = this.node_.clientWidth;
-	theResults[11] = this.node_.clientHeight;
-
-	theResults[12] = bb[0][0];
-	theResults[13] = bb[1][1];
-	theResults[14] = bb[2][0];
-	theResults[15] = bb[2][1];
-
-	stuff = this.computeCenterOfQuad_(0);	// bimedian method
-	theResults[16] = stuff[0];
-	theResults[17] = stuff[1];
-	stuff = this.computeCenterOfQuad_(1);		// diagonals method
-	theResults[18] = stuff[0];
-	theResults[19] = stuff[1];
-
-	theResults[20] = this.corners_[0][0];
-	theResults[21] = this.corners_[0][1];
-	theResults[22] = this.corners_[1][0];
-	theResults[23] = this.corners_[1][1];
-	theResults[24] = this.corners_[2][0];
-	theResults[25] = this.corners_[2][1];
-	theResults[26] = this.corners_[3][0];
-	theResults[27] = this.corners_[3][1];
-
-	theResults[28] = this.computeApproximateRotationCW_(theResults[16], theResults[17]);
-	return theResults;
-}
 GroundOverlayEX_element_imageLLQ.prototype.prepDoQuadrilateralTransform_ = function() {
 	// requires that this.corners_ be properly set with x,y points of the BL, BR, TR, TL corners;
 	// get the original (non-transformed) position of the img or canvas, which should never have borders even during editing
@@ -2850,852 +1955,7 @@ GroundOverlayEX_element_imageLLQ.prototype.prepDoQuadrilateralTransform_ = funct
 	srcSize = null;
 	srcLeftTop = null;
 }
-GroundOverlayEX_element_imageLLQ.prototype.computeSizeOfQuad_ = function() {
-	// width (TL to TR, BL to BR)
-	var dx = this.corners_[3][0] - this.corners_[2][0];
-	var dy = this.corners_[3][1] - this.corners_[2][1];
-	var width1 = Math.sqrt(dx*dx + dy*dy);
-	dx = this.corners_[0][0] - this.corners_[1][0];
-	dy = this.corners_[0][1] - this.corners_[1][1];
-	var width2 = Math.sqrt(dx*dx + dy*dy);
 
-	// height (TL to BL, TR to BR)
-	dx = this.corners_[3][0] - this.corners_[0][0];
-	dy = this.corners_[3][1] - this.corners_[0][1];
-	var height1 = Math.sqrt(dx*dx + dy*dy);
-	dx = this.corners_[2][0] - this.corners_[1][0];
-	dy = this.corners_[2][1] - this.corners_[1][1];
-	var height2 = Math.sqrt(dx*dx + dy*dy);
-
-	return [Math.max(width1, width2), Math.max(height1, height2)];
-}
-GroundOverlayEX_element_imageLLQ.prototype.computeCenterOfQuad_ = function(pMethod) {
-	// Introduction: https://en.wikipedia.org/wiki/Quadrilateral#Remarkable_points_and_lines_in_a_convex_quadrilateral
-	// there are two approaches:  intersection of corner-diagonals, or intersection of opposite midpoints (aka bimedians) (the vertix centroid)
-	// a nice diagram is at: http://www.cut-the-knot.org/Curriculum/Geometry/AnyQuadri.shtml
-	// based upon math theory, it is apparent the corner-diagonals method is not sufficiently accurate
-	var line1 = [0,0,0,0];
-	var line2 = [0,0,0,0];
-	
-	// this.corners_ order:  BL, BR, TR, TL
-	if (pMethod == 1) {
-		// corner-diagonals method; this is handy as it represents where the original rectangular center has moved to as a result of the 
-		// transform; since in most imagery the center is usually focused on or near a landmark, this represents where the landmark has "moved"
-		// to on the image
-		// line 1 is TR to BL
-		line1[0] = this.corners_[2][0];	// TR
-		line1[1] = this.corners_[2][1];
-		line1[2] = this.corners_[0][0];	// BL
-		line1[3] = this.corners_[0][1];
-
-		// line 2 is TL to BR
-		line2[0] = this.corners_[3][0];	// TL
-		line2[1] = this.corners_[3][1];
-		line2[2] = this.corners_[1][0];	// BR
-		line2[3] = this.corners_[1][1];
-	} else {
-		// bimedian method; this is what most people would consider the center of the quad
-		// line 1 is TRTL to BLBR
-		line1[0] = (this.corners_[2][0] + this.corners_[3][0]) / 2;
-		line1[1] = (this.corners_[2][1] + this.corners_[3][1]) / 2;
-		line1[2] = (this.corners_[0][0] + this.corners_[1][0]) / 2;
-		line1[3] = (this.corners_[0][1] + this.corners_[1][1]) / 2;
-		
-		// line 2 is BRTR to TLBL
-		line2[0] = (this.corners_[1][0] + this.corners_[2][0]) / 2;
-		line2[1] = (this.corners_[1][1] + this.corners_[2][1]) / 2;
-		line2[2] = (this.corners_[3][0] + this.corners_[0][0]) / 2;
-		line2[3] = (this.corners_[3][1] + this.corners_[0][1]) / 2;
-	}
-	return GOEX_computeIntersectTwoLines_(line1, line2);
-}
-GroundOverlayEX_element_imageLLQ.prototype.computeApproximateRotationCW_ = function(pBimCenterQuadX, pBimCenterQuadY) {
-	// corners order is BL, BR, TR, TL
-	// first calculate each original image's center-to-corner ray slopes;
-	// note that since browser uses -Y axis but atan2 uses +Y axis, we have to negate the Y terms
-	var i;
-	var nonborderSize = this.getBoundsSize_()
-	var centerRectX = nonborderSize[0] / 2;
-	var centerRectY = nonborderSize[1] / 2;
-	var origRaySlopes = [0,0,0,0];		// will be in radians and counterclockwise
-	origRaySlopes[0] = Math.atan2(-(nonborderSize[1] - centerRectY), 0 - centerRectX);			// BL
-	origRaySlopes[1] = Math.atan2(-(nonborderSize[1] - centerRectY), nonborderSize[0] - centerRectX);	// BR
-	origRaySlopes[2] = Math.atan2(-(0 - centerRectY), nonborderSize[0] - centerRectX);			// TR
-	origRaySlopes[3] = Math.atan2(-(0 - centerRectY), 0 - centerRectX);					// TL
-	
-	// now calculate the transformed image's bimedian-center-to-corner ray slopes;
-	// then calculate the delta slopes from original corner to new corner...this is that corner's rotation;
-	// also have to detect when a corner likely rotated past the backside and changed slope signs;
-	// also form an average rotation
-	var centerQuad = [0,0];
-	if (pBimCenterQuadX != 0 && pBimCenterQuadY != 0) { centerQuad[0] = pBimCenterQuadX; centerQuad[1] = pBimCenterQuadY; }
-	else { centerQuad = this.computeCenterOfQuad_(0); }	// bimedian center
-	var currRaySlopes = [0,0,0,0];
-	var rots_radians = [0,0,0,0];
-	var avgRot_radians = 0;
-	for (i=0; i<4; i++) {
-		currRaySlopes[i] = Math.atan2(-(this.corners_[i][1] - centerQuad[1]), this.corners_[i][0] - centerQuad[0]);
-		rots_radians[i] = currRaySlopes[i] - origRaySlopes[i];
-		if (GOEXsign(currRaySlopes[i]) != GOEXsign(origRaySlopes[i])) {
-			if (rots_radians[i] > Math.PI) { rots_radians[i] = (Math.PI*2) - rots_radians[i]; }
-			else if (rots_radians[i] < -Math.PI) { rots_radians[i] = (Math.PI*2) + rots_radians[i]; }
-		}
-		avgRot_radians += rots_radians[i];
-	}
-	avgRot_radians = avgRot_radians / 4;
-
-	// compute the statisical varances and standard deviation of the 4 corner rotations;
-	// using the absolute value of the variance to simplify things a bit in the final step
-	var variances_radians = [0,0,0,0];
-	var variance_radians = 0;
-	for (i=0; i<4; i++) {
-		variances_radians[i] = Math.abs(rots_radians[i] - avgRot_radians);
-		variance_radians += (variances_radians[i] * variances_radians[i]);
-	}
-	variance_radians = variance_radians / 4;
-	var stdDev_radians = Math.sqrt(variance_radians);
-
-	// now select only those corner rotations that are within the standard deviation allowance;
-	// this will "select out" any corner that is at a significantly different rotation than the rest of the corners,
-	// which can happen quite a bit with tilt-corrected imagery
-	// one stdDev=68.27% of the corners which is a bit low, two stdDev=95.45% which may be too high, 1.645=90%, 1.44=85%, 1.28=80%
-	stdDev_radians *= 1.44;
-	var avgSelectedRots_radians = 0;
-	var cntSelectedRots = 0;
-	for (i=0; i<4; i++) {
-		if (variances_radians[i] <= stdDev_radians) { cntSelectedRots++; avgSelectedRots_radians += rots_radians[i]; }
-	}
-	avgSelectedRots_radians = avgSelectedRots_radians / cntSelectedRots;		// average in counter-clockwise radians
-	var avgSelectedRots_degrees = -(avgSelectedRots_radians * 180 / Math.PI);	// change to degrees clockwise which the browser expects
-	return avgSelectedRots_degrees;
-}
-
-//////////////////////////////////////////////////////////////////////////////
-// GOEX_element_* classes
-//////////////////////////////////////////////////////////////////////////////
-// editing_element_ classes
-//////////////////////////////////////////////////////////////////////////////
-
-/**
- * @constructor
- */
-window['GroundOverlayEX_element_border'] = GroundOverlayEX_element_border;
-function GroundOverlayEX_element_border(pGOEX, pNonBorderWidth, pNonBorderHeight) {
-	this.parentGOEX_ = pGOEX;
-	this.id_ = "bdr";
-	this.added_ = false;
-	this.cornersWB_ = null;				// if used, this *includes* borders
-	this.node_ = document.createElement('div');
-	this.node_.parentGOEX = pGOEX;
-	this.node_.id = "GOEXeditBdr";
-	this.node_.style.position = 'absolute';
-	this.node_.style.visibility = "visible";
-	this.node_.style.border = '2px solid Fuchsia';
-	this.node_.style.width = pNonBorderWidth + "px";
-	this.node_.style.height = pNonBorderHeight + "px";
-}
-GroundOverlayEX_element_border.prototype.destroy_ = function() {
-	this.removeFromMap_();
-
-	this.parentGOEX_ = null;
-	if (this.cornersWB_ != null) {
-		for (var i in this.cornersWB_) { this.cornersWB_[i] = null; }
-		this.cornersWB_ = null;
-	}
-	this.node_.parentGOEX = null;
-	delete this.node_.parentGOEX;
-	this.node_ = null;
-}
-GroundOverlayEX_element_border.prototype.addToMapLayer_ = function(pLayer) {
-	if (!this.added_) {
-		pLayer.appendChild(this.node_);
-		this.added_ = true;
-	}
-}
-GroundOverlayEX_element_border.prototype.removeFromMap_ = function() {
-	if (this.added_) {
-		this.node_.parentNode.removeChild(this.node_);
-		this.added_ = false;
-	}
-}
-GroundOverlayEX_element_border.prototype.setVisible_ = function(pVisible) {
-	// ignored for a border; the border must always be visible
-}
-GroundOverlayEX_element_border.prototype.getBoundsLeftTopXY_ = function() {
-	return [this.node_.offsetLeft + this.node_.clientLeft, this.node_.offsetTop + this.node_.clientTop];
-}
-GroundOverlayEX_element_border.prototype.getBoundsSize_ = function() {
-	// return: width, height
-	return [this.node_.clientWidth, this.node_.clientHeight];
-}
-GroundOverlayEX_element_border.prototype.getPositionXY_ = function() {
-	var centerX = (this.node_.offsetLeft + this.node_.clientLeft) + Math.round(this.node_.clientWidth / 2);
-	var centerY = (this.node_.offsetTop + this.node_.clientTop) + Math.round(this.node_.clientHeight / 2);
-	return [centerX, centerY];
-}
-GroundOverlayEX_element_border.prototype.doZindex_ = function() {
-	var z = this.parentGOEX_.getEffectiveZindex();
-	this.node_.style.zIndex = String(z - 1);
-}
-GroundOverlayEX_element_border.prototype.adjustEditingLLB_ = function(pNonBorderLeft, pNonBorderTop) {
-	// set the transform default for rotation
-	this.node_.style["-webkit-transformOrigin"] = "50% 50%";	  
-	this.node_.style["-ms-transformOrigin"] = "50% 50%";
-	this.node_.style["-o-transformOrigin"] = "50% 50%";
-	this.node_.style.transformOrigin = "50% 50%";
-
-	this.node_.style.left = (pNonBorderLeft - this.node_.clientLeft) + "px";
-	this.node_.style.top = (pNonBorderTop - this.node_.clientTop) + "px";
-	this.adjustRotationLLB_();
-}
-GroundOverlayEX_element_border.prototype.adjustDrawLLB_ = function(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight) {
-	this.adjustCommonLLB_(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight);
-}
-GroundOverlayEX_element_border.prototype.adjustDragging_ = function(pDeltaX, pDeltaY, pNonBorderLeft, pNonBorderTop) {
-	this.node_.style.left = (pNonBorderLeft - this.node_.clientLeft) + "px";
-	this.node_.style.top = (pNonBorderTop - this.node_.clientTop) + "px";
-}
-GroundOverlayEX_element_border.prototype.adjustRotationLLB_ = function() {
-	var rot = -(this.parentGOEX_.rotate_);
-	var rotStr = 'rotate(' + rot + 'deg)';
-	this.node_.style["-webkit-transform"] = rotStr;	  
-	this.node_.style["-ms-transform"] = rotStr;
-	this.node_.style["-o-transform"] = rotStr;
-	this.node_.style.transform = rotStr;
-}				
-GroundOverlayEX_element_border.prototype.adjustSizingLLB_ = function(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight) {
-	this.adjustCommonLLB_(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight);
-}	
-GroundOverlayEX_element_border.prototype.adjustRevertLLB_ = function(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight) {
-	// only called for reverting during LLB-mode
-	this.adjustCommonLLB_(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight);
-}
-GroundOverlayEX_element_border.prototype.adjustCommonLLB_ = function(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight) {
-	this.node_.style.width = pNonBorderWidth + "px";
-	this.node_.style.height = pNonBorderHeight + "px";
-	this.node_.style.left = (pNonBorderLeft - this.node_.clientLeft) + "px";
-	this.node_.style.top = (pNonBorderTop - this.node_.clientTop) + "px";
-	this.adjustRotationLLB_();
-}
-GroundOverlayEX_element_border.prototype.adjustEditingLLQ_ = function(pBoundsBox) {
-	// set the transform default for matrix3d
-	this.node_.style["-webkit-transformOrigin"] = "0 0";	  
-	this.node_.style["-ms-transformOrigin"] = "0 0";
-	this.node_.style["-o-transformOrigin"] = "0 0";
-	this.node_.style.transformOrigin = "0 0";
-
-	if (this.cornersWB_ == null) {
-		this.cornersWB_ = [];
-		for (var i=0; i<4; i++) {
-			var point = [0,0];
-			this.cornersWB_[i] = point;
-		}
-		point = null;
-	}
-	
-	this.commonSyncToLLQ_();
-}
-GroundOverlayEX_element_border.prototype.adjustDrawLLQ_ = function(pBoundsBox) {
-	this.commonSyncToLLQ_();
-}
-GroundOverlayEX_element_border.prototype.adjustSizingLLQ_ = function(pHandle, pDeltaX, pDeltaY, pBoundsBox) {
-	this.commonSyncToLLQ_();
-}
-GroundOverlayEX_element_border.prototype.adjustRevertLLQ_ = function(pBoundsBox) {
-	this.commonSyncToLLQ_();
-}
-GroundOverlayEX_element_border.prototype.commonSyncToLLQ_ = function() {
-	var de = this.parentGOEX_.display_element_;
-	
-	// first place the non-transformed rectange in the same place as the non-transformed image of the display_element_
-	var nonborderSize = de.getBoundsSize_();
-	var nonborderLeftTop = de.getBoundsLeftTopXY_();
-	this.node_.style.width = nonborderSize[0] + "px";
-	this.node_.style.height = nonborderSize[1] + "px";
-	this.node_.style.left = (nonborderLeftTop[0] - this.node_.clientLeft) + "px";
-	this.node_.style.top = (nonborderLeftTop[1] - this.node_.clientTop) + "px";
-	nonborderSize = null;
-	nonborderLeftTop = null;
-
-	// now calculate the new corners that have the border sizes added to them
-	var dx, dy, raySlope, rayDist;
-	var centerQuad = de.computeCenterOfQuad_(0);	// bimedians method
-	var oneEdgeBordersize = this.node_.clientLeft;
-	var increase = Math.sqrt(2 * oneEdgeBordersize * oneEdgeBordersize);
-	for (var i=0; i<4; i++) {
-		dx = de.corners_[i][0] - centerQuad[0];
-		dy = -(de.corners_[i][1] - centerQuad[1]);
-		raySlope = Math.atan2(dy, dx);
-		rayDist = Math.sqrt(dx*dx + dy*dy);
-		rayDist += increase;
-		var point = [0,0];
-		this.cornersWB_[i][0] =  Math.round(Math.cos(raySlope) * rayDist) + centerQuad[0];
-		this.cornersWB_[i][1] = -Math.round(Math.sin(raySlope) * rayDist) + centerQuad[1];
-	}
-	centerQuad = null;
-
-	// perform the transform
-	this.prepDoQuadrilateralTransform_();
-}
-GroundOverlayEX_element_border.prototype.prepDoQuadrilateralTransform_ = function() {
-	// requires that this.corners_ be properly set with x,y points of the BL, BR, TR, TL corners;
-	// get the original (non-transformed) position of the img or canvas, which should never have borders even during editing
-	// this gets called fairly often, so be explicit about garbage collection
-	var srcSizeWB = [(this.node_.clientWidth + this.node_.clientLeft),  (this.node_.clientHeight + this.node_.clientTop)];
-	var srcLeftTopWB = [this.node_.offsetLeft, this.node_.offsetTop];
-	
-	// perform the quad transform
-	this.parentGOEX_.doQuadrilateralTransform_(this.node_, srcLeftTopWB, srcSizeWB, this.cornersWB_);
-	srcSizeWB = null;
-	srcLeftTopWB = null;
-}
-
-
-/**
- * @constructor
- */
-window['GroundOverlayEX_element_bounds'] = GroundOverlayEX_element_bounds;
-function GroundOverlayEX_element_bounds(pGOEX, pNonBorderWidth, pNonBorderHeight) {
-	this.parentGOEX_ = pGOEX;
-	this.id_ = "bnd";
-	this.added_ = false;
-	this.visible_ = false;
-	this.node_ = document.createElement('div');
-	this.node_.parentGOEX = pGOEX;
-	this.node_.id = "GOEXeditBnd";
-	this.node_.style.position = 'absolute';
-	this.node_.style.visibility = "visible";
-	this.node_.style.border = '2px solid yellow';
-	this.node_.style.width = pNonBorderWidth + "px";
-	this.node_.style.height = pNonBorderHeight + "px";
-}
-GroundOverlayEX_element_bounds.prototype.destroy_ = function() {
-	this.removeFromMap_();
-
-	this.parentGOEX_ = null;
-	this.node_.parentGOEX = null;
-	delete this.node_.parentGOEX;
-	this.node_ = null;
-}
-GroundOverlayEX_element_bounds.prototype.addToMapLayer_ = function(pLayer) {
-	if (!this.added_) {
-		pLayer.appendChild(this.node_);
-		this.added_ = true;
-	}
-}
-GroundOverlayEX_element_bounds.prototype.removeFromMap_ = function() {
-	if (this.added_) {
-		this.node_.parentNode.removeChild(this.node_);
-		this.added_ = false;
-	}
-}
-GroundOverlayEX_element_bounds.prototype.setVisible_ = function(pVisible) {
-	this.visible_ = pVisible;
-	if (this.visible_) { this.node_.style.visibility = "visible"; }
-	else { this.node_.style.visibility = "hidden"; }
-}
-GroundOverlayEX_element_bounds.prototype.getBoundsLeftTopXY_ = function() {
-	return [this.node_.offsetLeft + this.node_.clientLeft, this.node_.offsetTop + this.node_.clientTop];
-}
-GroundOverlayEX_element_bounds.prototype.getBoundsSize_ = function() {
-	// return: width, height
-	return [this.node_.clientWidth, this.node_.clientHeight];
-}
-GroundOverlayEX_element_bounds.prototype.getPositionXY_ = function() {
-	var centerX = (this.node_.offsetLeft + this.node_.clientLeft) + Math.round(this.node_.clientWidth / 2);
-	var centerY = (this.node_.offsetTop + this.node_.clientTop) + Math.round(this.node_.clientHeight / 2);
-	return [centerX, centerY];
-}
-GroundOverlayEX_element_bounds.prototype.doZindex_ = function() {
-	var z = this.parentGOEX_.getEffectiveZindex();
-	this.node_.style.zIndex = String(z - 2);
-}
-GroundOverlayEX_element_bounds.prototype.adjustEditingLLB_ = function(pNonBorderLeft, pNonBorderTop) {		
-	this.node_.style.left = (pNonBorderLeft - this.node_.clientLeft) + "px";
-	this.node_.style.top = (pNonBorderTop - this.node_.clientTop) + "px";
-}
-GroundOverlayEX_element_bounds.prototype.adjustDrawLLB_ = function(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight) {
-	this.adjustCommonLLB_(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight);
-}
-GroundOverlayEX_element_bounds.prototype.adjustDragging_ = function(pDeltaX, pDeltaY, pNonBorderLeft, pNonBorderTop) {
-	this.node_.style.left = (pNonBorderLeft - this.node_.clientLeft) + "px";
-	this.node_.style.top = (pNonBorderTop - this.node_.clientTop) + "px";
-}
-GroundOverlayEX_element_bounds.prototype.adjustRotationLLB_ = function() {
-	// not applicable
-}				
-GroundOverlayEX_element_bounds.prototype.adjustSizingLLB_ = function(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight) {
-	this.adjustCommonLLB_(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight);
-}	
-GroundOverlayEX_element_bounds.prototype.adjustRevertLLB_ = function(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight) {
-	this.adjustCommonLLB_(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight);
-}
-GroundOverlayEX_element_bounds.prototype.adjustCommonLLB_ = function(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight) {
-	this.node_.style.width = pNonBorderWidth + "px";
-	this.node_.style.height = pNonBorderHeight + "px";
-	this.node_.style.left = (pNonBorderLeft - this.node_.clientLeft) + "px";
-	this.node_.style.top = (pNonBorderTop - this.node_.clientTop) + "px";
-}
-GroundOverlayEX_element_bounds.prototype.adjustEditingLLQ_ = function(pBoundsBox) {		
-	this.adjustCommonLLQ_(pBoundsBox);
-}
-GroundOverlayEX_element_bounds.prototype.adjustDrawLLQ_ = function(pBoundsBox) {
-	this.adjustCommonLLQ_(pBoundsBox);
-}
-GroundOverlayEX_element_bounds.prototype.adjustSizingLLQ_ = function(pHandle, pDeltaX, pDeltaY, pBoundsBox) {
-	// ignored for a LLQ resize
-}
-GroundOverlayEX_element_bounds.prototype.adjustRevertLLQ_ = function(pBoundsBox) {
-	this.adjustCommonLLQ_(pBoundsBox);
-}
-GroundOverlayEX_element_bounds.prototype.adjustCommonLLQ_ = function(pBoundsBox) {
-	var nonborderSize = this.parentGOEX_.display_element_.getBoundsSize_();
-	var nonborderLeftTop = this.parentGOEX_.display_element_.getBoundsLeftTopXY_();
-
-	this.node_.style.width = nonborderSize[0] + "px";
-	this.node_.style.height = nonborderSize[1] + "px";
-	this.node_.style.left = (nonborderLeftTop[0] - this.node_.clientLeft) + "px";
-	this.node_.style.top = (nonborderLeftTop[1] - this.node_.clientTop) + "px";
-}
-
-/**
- * @constructor
- */
-window['GroundOverlayEX_element_region'] = GroundOverlayEX_element_region;
-function GroundOverlayEX_element_region(pGOEX, pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight) {
-	this.parentGOEX_ = pGOEX;
-	this.id_ = "rgn";
-	this.added_ = false;
-	this.visible_ = false;
-	this.node_ = document.createElement('div');
-	this.node_.parentGOEX = pGOEX;
-	this.node_.id = "GOEXeditRgn";
-	this.node_.style.position = 'absolute';
-	this.node_.style.visibility = "hidden";
-	this.node_.style.border = '2px solid red';
-
-	// need to calculate the offsets between the current RegionBounds and the Image bounds in case the application set a larger or smaller region
-	var overlayProjection = pGOEX.getProjection();
-	var nepoint = overlayProjection.fromLatLngToDivPixel(pGOEX.regionBounds_.getNorthEast());
-	var swpoint = overlayProjection.fromLatLngToDivPixel(pGOEX.regionBounds_.getSouthWest());
-
-	this.offsetLeft_ = swpoint.x - pNonBorderLeft;
-	this.offsetTop_ = nepoint.y - pNonBorderTop;
-	this.offsetWidth_ = Math.abs(nepoint.x - swpoint.x) - pNonBorderWidth;
-	this.offsetHeight_ = Math.abs(nepoint.y - swpoint.y) - pNonBorderHeight;
-
-	this.node_.style.width = (pNonBorderWidth + this.offsetWidth_) + "px";
-	this.node_.style.height = (pNonBorderHeight + this.offsetHeight_) + "px";
-}
-GroundOverlayEX_element_region.prototype.destroy_ = function() {
-	this.removeFromMap_();
-
-	this.parentGOEX_ = null;
-	this.node_.parentGOEX = null;
-	delete this.node_.parentGOEX;
-	this.node_ = null;
-}
-GroundOverlayEX_element_region.prototype.addToMapLayer_ = function(pLayer) {
-	if (!this.added_) {
-		pLayer.appendChild(this.node_);
-		this.added_ = true;
-	}
-}
-GroundOverlayEX_element_region.prototype.removeFromMap_ = function() {
-	if (this.added_) {
-		this.node_.parentNode.removeChild(this.node_);
-		this.added_ = false;
-	}
-}
-GroundOverlayEX_element_region.prototype.setVisible_ = function(pVisible) {
-	this.visible_ = pVisible;
-	if (this.visible_) { this.node_.style.visibility = "visible"; }
-	else { this.node_.style.visibility = "hidden"; }
-}
-GroundOverlayEX_element_region.prototype.getBoundsLeftTopXY_ = function() {
-	return [this.node_.offsetLeft + this.node_.clientLeft, this.node_.offsetTop + this.node_.clientTop];
-}
-GroundOverlayEX_element_region.prototype.getBoundsSize_ = function() {
-	// return: width, height
-	return [this.node_.clientWidth, this.node_.clientHeight];
-}
-GroundOverlayEX_element_region.prototype.getPositionXY_ = function() {
-	var centerX = (this.node_.offsetLeft + this.node_.clientLeft) + Math.round(this.node_.clientWidth / 2);
-	var centerY = (this.node_.offsetTop + this.node_.clientTop) + Math.round(this.node_.clientHeight / 2);
-	return [centerX, centerY];
-}
-GroundOverlayEX_element_region.prototype.doZindex_ = function() {
-	var z = this.parentGOEX_.getEffectiveZindex();
-	this.node_.style.zIndex = String(z - 2);
-}
-GroundOverlayEX_element_region.prototype.adjustEditingLLB_ = function(pNonBorderLeft, pNonBorderTop) {		
-	this.adjustCommonLLB_();
-}
-GroundOverlayEX_element_region.prototype.adjustDrawLLB_ = function(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight) {
-	this.adjustCommonLLB_();
-}
-GroundOverlayEX_element_region.prototype.adjustDragging_ = function(pDeltaX, pDeltaY, pNonBorderLeft, pNonBorderTop) {
-	this.adjustCommonLLB_();
-}
-GroundOverlayEX_element_region.prototype.adjustRotationLLB_ = function() {
-	this.adjustCommonLLB_();
-}				
-GroundOverlayEX_element_region.prototype.adjustSizingLLB_ = function(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight) {
-	this.adjustCommonLLB_();
-}
-GroundOverlayEX_element_region.prototype.adjustRevertLLB_ = function(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight) {
-	this.adjustCommonLLB_();
-}	
-GroundOverlayEX_element_region.prototype.adjustCommonLLB_ = function() {
-	// all region adjustments based upon LLB-mode are defined by the bounds box
-	var bb = this.parentGOEX_.display_element_.getBoundsBox_();		// returns: BL, TR, size
-	this.node_.style.left = (bb[0][0] - this.node_.clientLeft + this.offsetLeft_) + "px";
-	this.node_.style.top = (bb[1][1] - this.node_.clientTop + this.offsetTop_) + "px";
-	this.node_.style.width = (bb[2][0] + this.offsetWidth_) + "px";
-	this.node_.style.height = (bb[2][1] + this.offsetHeight_) + "px";
-}
-GroundOverlayEX_element_region.prototype.adjustEditingLLQ_ = function(pBoundsBox) {		
-	this.node_.style.left = (pBoundsBox[0][0] - this.node_.clientLeft + this.offsetLeft_) + "px";
-	this.node_.style.top = (pBoundsBox[1][1] - this.node_.clientTop + this.offsetTop_) + "px";
-}
-GroundOverlayEX_element_region.prototype.adjustDrawLLQ_ = function(pBoundsBox) {
-	this.adjustCommonLLQ_(pBoundsBox);
-}
-GroundOverlayEX_element_region.prototype.adjustSizingLLQ_ = function(pHandle, pDeltaX, pDeltaY, pBoundsBox) {
-	this.adjustCommonLLQ_(pBoundsBox);
-}
-GroundOverlayEX_element_region.prototype.adjustRevertLLQ_ = function(pBoundsBox) {
-	this.adjustCommonLLQ_(pBoundsBox);
-}
-GroundOverlayEX_element_region.prototype.adjustCommonLLQ_ = function(pBoundsBox) {
-	// pBoundsBox is BL, TR, size
-	this.node_.style.left = (pBoundsBox[0][0] - this.node_.clientLeft + this.offsetLeft_) + "px";
-	this.node_.style.top = (pBoundsBox[1][1] - this.node_.clientTop + this.offsetTop_) + "px";
-	this.node_.style.width = (pBoundsBox[2][0] + this.offsetWidth_) + "px";
-	this.node_.style.height = (pBoundsBox[2][1] + this.offsetHeight_) + "px";
-}
-
-/**
- * @constructor
- */
-window['GroundOverlayEX_element_editing'] = GroundOverlayEX_element_editing;
-function GroundOverlayEX_element_editing(pGOEX, pNonBorderWidth, pNonBorderHeight) {
-	this.parentGOEX_ = pGOEX;
-	this.id_ = "edt";
-	this.added_ = false;
-	this.node_ = document.createElement('div');
-	this.node_.parentGOEX = pGOEX;
-	this.node_.id = "GOEXeditEdt";
-	this.node_.style.position = 'absolute';
-	this.node_.style.visibility = "visible";	// this must remain visible to capture mouse events
-	this.node_.style.border = '0px solid green';
-	this.node_.style.width = (pNonBorderWidth + GOEX_EDITING_EXPANSE*2) + "px";
-	this.node_.style.height = (pNonBorderHeight + GOEX_EDITING_EXPANSE*2) + "px";
-}
-GroundOverlayEX_element_editing.prototype.destroy_ = function() {
-	this.removeFromMap_();
-
-	this.parentGOEX_ = null;
-	this.node_.parentGOEX = null;
-	delete this.node_.parentGOEX;
-	this.node_ = null;
-}
-GroundOverlayEX_element_editing.prototype.addToMapLayer_ = function(pLayer) {
-	if (!this.added_) {
-		pLayer.appendChild(this.node_);
-		this.added_ = true;
-	}
-}
-GroundOverlayEX_element_editing.prototype.removeFromMap_ = function() {
-	if (this.added_) {
-		this.node_.parentNode.removeChild(this.node_);
-		this.added_ = false;
-	}
-}
-GroundOverlayEX_element_editing.prototype.setVisible_ = function(pVisible) {
-	// always hidden
-}
-GroundOverlayEX_element_editing.prototype.getBoundsLeftTopXY_ = function() {
-	return [this.node_.offsetLeft + this.node_.clientLeft, this.node_.offsetTop + this.node_.clientTop];
-}
-GroundOverlayEX_element_editing.prototype.getBoundsSize_ = function() {
-	// return: width, height
-	return [this.node_.clientWidth, this.node_.clientHeight];
-}
-GroundOverlayEX_element_editing.prototype.getPositionXY_ = function() {
-	var centerX = (this.node_.offsetLeft + this.node_.clientLeft) + Math.round(this.node_.clientWidth / 2);
-	var centerY = (this.node_.offsetTop + this.node_.clientTop) + Math.round(this.node_.clientHeight / 2);
-	return [centerX, centerY];
-}
-GroundOverlayEX_element_editing.prototype.doZindex_ = function() {
-	var z = this.parentGOEX_.getEffectiveZindex();
-	this.node_.style.zIndex = String(z - 1);
-}
-GroundOverlayEX_element_editing.prototype.adjustEditingLLB_ = function(pNonBorderLeft, pNonBorderTop) {		
-	this.node_.style.left = (pNonBorderLeft - this.node_.clientLeft - GOEX_EDITING_EXPANSE) + "px";
-	this.node_.style.top = (pNonBorderTop - this.node_.clientLeft - GOEX_EDITING_EXPANSE) + "px";
-	this.adjustRotationLLB_();
-}
-GroundOverlayEX_element_editing.prototype.adjustDrawLLB_ = function(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight) {
-	this.adjustCommonLLB_(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight);
-}
-GroundOverlayEX_element_editing.prototype.adjustDragging_ = function(pDeltaX, pDeltaY, pNonBorderLeft, pNonBorderTop) {
-	this.node_.style.left = (this.node_.offsetLeft + pDeltaX) + "px";
-	this.node_.style.top = (this.node_.offsetTop + pDeltaY) + "px";
-}
-GroundOverlayEX_element_editing.prototype.adjustRotationLLB_ = function() {
-	var rot = -(this.parentGOEX_.rotate_);
-	var rotStr = 'rotate(' + rot + 'deg)';
-	this.node_.style["-webkit-transform"] = rotStr;	  
-	this.node_.style["-ms-transform"] = rotStr;
-	this.node_.style["-o-transform"] = rotStr;
-	this.node_.style.transform = rotStr;
-}				
-GroundOverlayEX_element_editing.prototype.adjustSizingLLB_ = function(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight) {
-	this.adjustCommonLLB_(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight);
-}	
-GroundOverlayEX_element_editing.prototype.adjustRevertLLB_ = function(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight) {
-	this.adjustCommonLLB_(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight);
-}
-GroundOverlayEX_element_editing.prototype.adjustCommonLLB_ = function(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight) {
-	this.node_.style.width = (pNonBorderWidth + GOEX_EDITING_EXPANSE*2) + "px";
-	this.node_.style.height = (pNonBorderHeight + GOEX_EDITING_EXPANSE*2) + "px";
-	this.node_.style.left = (pNonBorderLeft - this.node_.clientLeft - GOEX_EDITING_EXPANSE) + "px";
-	this.node_.style.top = (pNonBorderTop - this.node_.clientLeft - GOEX_EDITING_EXPANSE) + "px";
-	this.adjustRotationLLB_();
-}
-GroundOverlayEX_element_editing.prototype.adjustEditingLLQ_ = function(pBoundsBox) {		
-	// pBoundsBox is BL, TR, size
-	this.node_.style.left = (pBoundsBox[0][0] - this.node_.clientLeft - GOEX_EDITING_EXPANSE) + "px";
-	this.node_.style.top = (pBoundsBox[1][1] - this.node_.clientTop - GOEX_EDITING_EXPANSE) + "px";
-}
-GroundOverlayEX_element_editing.prototype.adjustDrawLLQ_ = function(pBoundsBox) {
-	this.adjustCommonLLQ_(pBoundsBox);
-}
-GroundOverlayEX_element_editing.prototype.adjustSizingLLQ_ = function(pHandle, pDeltaX, pDeltaY, pBoundsBox) {
-	this.adjustCommonLLQ_(pBoundsBox);
-}
-GroundOverlayEX_element_editing.prototype.adjustRevertLLQ_ = function(pBoundsBox) {
-	this.adjustCommonLLQ_(pBoundsBox);
-}
-GroundOverlayEX_element_editing.prototype.adjustCommonLLQ_ = function(pBoundsBox) {
-	// pBoundsBox is BL, TR, size
-	this.node_.style.left = (pBoundsBox[0][0] - this.node_.clientLeft - GOEX_EDITING_EXPANSE) + "px";
-	this.node_.style.top = (pBoundsBox[1][1] - this.node_.clientTop - GOEX_EDITING_EXPANSE) + "px";
-	this.node_.style.width = (pBoundsBox[2][0] + GOEX_EDITING_EXPANSE*2) + "px";
-	this.node_.style.height = (pBoundsBox[2][1] + GOEX_EDITING_EXPANSE*2) + "px";
-}
-
-/**
- * @constructor
- */
-window['GroundOverlayEX_element_centerspot'] = GroundOverlayEX_element_centerspot;
-function GroundOverlayEX_element_centerspot(pGOEX, pNonBorderWidth, pNonBorderHeight) {
-	this.parentGOEX_ = pGOEX;
-	this.id_ = "sp1";
-	this.added_ = false;
-	this.visible_ = false;
-	this.relativeCenterX_ = Math.round(pNonBorderWidth / 2);
-	this.relativeCenterY_ = Math.round(pNonBorderHeight / 2);
-	this.node_ = document.createElement('div');
-	this.node_.parentGOEX = pGOEX;
-	this.node_.id = "GOEXeditSp1";
-	this.node_.style.position = 'absolute';
-	this.node_.style.visibility = "hidden";
-	this.node_.style.width = "9px";
-	this.node_.style.height = "9px";
-	this.node_.style.borderRadius = "50%";
-	this.node_.style.backgroundColor = "red";
-}
-GroundOverlayEX_element_centerspot.prototype.destroy_ = function() {
-	this.removeFromMap_();
-	this.parentGOEX_ = null;
-	this.node_.parentGOEX = null;
-	delete this.node_.parentGOEX;
-	this.node_ = null;
-}
-GroundOverlayEX_element_centerspot.prototype.addToMapLayer_ = function(pLayer) {
-	if (!this.added_) {
-		pLayer.appendChild(this.node_);
-		this.added_ = true;
-	}
-}
-GroundOverlayEX_element_centerspot.prototype.removeFromMap_ = function() {
-	if (this.added_) {
-		this.node_.parentNode.removeChild(this.node_);
-		this.added_ = false;
-	}
-}
-GroundOverlayEX_element_centerspot.prototype.setVisible_ = function(pVisible) {
-	this.visible_ = pVisible;
-	if (this.visible_) { this.node_.style.visibility = "visible"; }
-	else { this.node_.style.visibility = "hidden"; }
-}
-GroundOverlayEX_element_centerspot.prototype.getBoundsLeftTopXY_ = function() {
-	return [this.node_.offsetLeft + this.node_.clientLeft, this.node_.offsetTop + this.node_.clientTop];
-}
-GroundOverlayEX_element_centerspot.prototype.getBoundsSize_ = function() {
-	// return: width, height
-	return [this.node_.clientWidth, this.node_.clientHeight];
-}
-GroundOverlayEX_element_centerspot.prototype.getPositionXY_ = function() {
-	var centerX = (this.node_.offsetLeft + this.node_.clientLeft) + Math.round(this.node_.clientWidth / 2);
-	var centerY = (this.node_.offsetTop + this.node_.clientTop) + Math.round(this.node_.clientHeight / 2);
-	return [centerX, centerY];
-}
-GroundOverlayEX_element_centerspot.prototype.doZindex_ = function() {
-	var z = this.parentGOEX_.getEffectiveZindex();
-	this.node_.style.zIndex = String(z + 1);
-}
-GroundOverlayEX_element_centerspot.prototype.adjustEditingLLB_ = function(pNonBorderLeft, pNonBorderTop) {		
-	this.node_.style.left = (pNonBorderLeft + this.relativeCenterX_ - 4) + "px";
-	this.node_.style.top = (pNonBorderTop + this.relativeCenterY_ - 4) + "px";
-}
-GroundOverlayEX_element_centerspot.prototype.adjustDrawLLB_ = function(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight) {
-	this.adjustCommonLLB_(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight);
-}
-GroundOverlayEX_element_centerspot.prototype.adjustDragging_ = function(pDeltaX, pDeltaY, pNonBorderLeft, pNonBorderTop) {
-	this.node_.style.left = (this.node_.offsetLeft + pDeltaX) + "px";
-	this.node_.style.top = (this.node_.offsetTop + pDeltaY) + "px";
-}
-GroundOverlayEX_element_centerspot.prototype.adjustRotationLLB_ = function() {
-	// ignored for spots
-}				
-GroundOverlayEX_element_centerspot.prototype.adjustSizingLLB_ = function(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight) {
-	this.adjustCommonLLB_(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight);
-}	
-GroundOverlayEX_element_centerspot.prototype.adjustRevertLLB_ = function(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight) {
-	this.adjustCommonLLB_(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight);
-}
-GroundOverlayEX_element_centerspot.prototype.adjustCommonLLB_ = function(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight) {
-	this.relativeCenterX_ = Math.round(pNonBorderWidth / 2);
-	this.relativeCenterY_ = Math.round(pNonBorderHeight / 2);
-	this.node_.style.left = (pNonBorderLeft + this.relativeCenterX_ - 4) + "px";
-	this.node_.style.top = (pNonBorderTop + this.relativeCenterY_ - 4) + "px";
-}
-GroundOverlayEX_element_centerspot.prototype.adjustEditingLLQ_ = function(pBoundsBox) {		
-	this.adjustCommonLLQ_();
-}
-GroundOverlayEX_element_centerspot.prototype.adjustDrawLLQ_ = function(pBoundsBox) {
-	this.adjustCommonLLQ_();
-}
-GroundOverlayEX_element_centerspot.prototype.adjustSizingLLQ_ = function(pHandle, pDeltaX, pDeltaY, pBoundsBox) {
-	this.adjustCommonLLQ_();
-}
-GroundOverlayEX_element_centerspot.prototype.adjustRevertLLQ_ = function(pBoundsBox) {
-	this.adjustCommonLLQ_();
-}
-GroundOverlayEX_element_centerspot.prototype.adjustCommonLLQ_ = function() {
-	var xy = this.parentGOEX_.display_element_.computeCenterOfQuad_(0);	// bimedian method
-	this.node_.style.left = (xy[0] - 4) + "px";
-	this.node_.style.top = (xy[1] - 4) + "px";
-}
-
-/**
- * @constructor
- */
-window['GroundOverlayEX_element_centerspotalt'] = GroundOverlayEX_element_centerspotalt;
-function GroundOverlayEX_element_centerspotalt(pGOEX, pNonBorderWidth, pNonBorderHeight) {
-	this.parentGOEX_ = pGOEX;
-	this.id_ = "sp2";
-	this.added_ = false;
-	this.visible_ = false;
-	this.relativeCenterX_ = Math.round(pNonBorderWidth / 2);
-	this.relativeCenterY_ = Math.round(pNonBorderHeight / 2);
-	this.node_ = document.createElement('div');
-	this.node_.parentGOEX = pGOEX;
-	this.node_.id = "GOEXeditSp2";
-	this.node_.style.position = 'absolute';
-	this.node_.style.visibility = "hidden";
-	this.node_.style.width = "9px";
-	this.node_.style.height = "9px";
-	this.node_.style.borderRadius = "50%";
-	this.node_.style.backgroundColor = "yellow";
-}
-GroundOverlayEX_element_centerspotalt.prototype.destroy_ = function() {
-	this.removeFromMap_();
-
-	this.parentGOEX_ = null;
-	this.node_.parentGOEX = null;
-	delete this.node_.parentGOEX;
-	this.node_ = null;
-}
-GroundOverlayEX_element_centerspotalt.prototype.addToMapLayer_ = function(pLayer) {
-	if (!this.added_) {
-		pLayer.appendChild(this.node_);
-		this.added_ = true;
-	}
-}
-GroundOverlayEX_element_centerspotalt.prototype.removeFromMap_ = function() {
-	if (this.added_) {
-		this.node_.parentNode.removeChild(this.node_);
-		this.added_ = false;
-	}
-}
-GroundOverlayEX_element_centerspotalt.prototype.setVisible_ = function(pVisible) {
-	this.visible_ = pVisible;
-	if (this.visible_) { this.node_.style.visibility = "visible"; }
-	else { this.node_.style.visibility = "hidden"; }
-}
-GroundOverlayEX_element_centerspotalt.prototype.getBoundsLeftTopXY_ = function() {
-	return [this.node_.offsetLeft + this.node_.clientLeft, this.node_.offsetTop + this.node_.clientTop];
-}
-GroundOverlayEX_element_centerspotalt.prototype.getBoundsSize_ = function() {
-	// return: width, height
-	return [this.node_.clientWidth, this.node_.clientHeight];
-}
-GroundOverlayEX_element_centerspotalt.prototype.getPositionXY_ = function() {
-	var centerX = (this.node_.offsetLeft + this.node_.clientLeft) + Math.round(this.node_.clientWidth / 2);
-	var centerY = (this.node_.offsetTop + this.node_.clientTop) + Math.round(this.node_.clientHeight / 2);
-	return [centerX, centerY];
-}
-GroundOverlayEX_element_centerspotalt.prototype.doZindex_ = function() {
-	var z = this.parentGOEX_.getEffectiveZindex();
-	this.node_.style.zIndex = String(z + 1);
-}
-GroundOverlayEX_element_centerspotalt.prototype.adjustEditingLLB_ = function(pNonBorderLeft, pNonBorderTop) {		
-	this.node_.style.left = (pNonBorderLeft + this.relativeCenterX_ - 4) + "px";
-	this.node_.style.top = (pNonBorderTop + this.relativeCenterY_ - 4) + "px";
-}
-GroundOverlayEX_element_centerspotalt.prototype.adjustDrawLLB_ = function(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight) {
-	this.adjustCommonLLB_(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight);
-}
-GroundOverlayEX_element_centerspotalt.prototype.adjustDragging_ = function(pDeltaX, pDeltaY, pNonBorderLeft, pNonBorderTop) {
-	this.node_.style.left = (this.node_.offsetLeft + pDeltaX) + "px";
-	this.node_.style.top = (this.node_.offsetTop + pDeltaY) + "px";
-}
-GroundOverlayEX_element_centerspotalt.prototype.adjustRotationLLB_ = function() {
-	// ignored for spots
-}				
-GroundOverlayEX_element_centerspotalt.prototype.adjustSizingLLB_ = function(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight) {
-	this.adjustCommonLLB_(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight);
-}	
-GroundOverlayEX_element_centerspotalt.prototype.adjustRevertLLB_ = function(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight) {
-	this.adjustCommonLLB_(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight);
-}
-GroundOverlayEX_element_centerspotalt.prototype.adjustCommonLLB_ = function(pNonBorderLeft, pNonBorderTop, pNonBorderWidth, pNonBorderHeight) {
-	this.relativeCenterX_ = Math.round(pNonBorderWidth / 2);
-	this.relativeCenterY_ = Math.round(pNonBorderHeight / 2);
-	this.node_.style.left = (pNonBorderLeft + this.relativeCenterX_ - 4) + "px";
-	this.node_.style.top = (pNonBorderTop + this.relativeCenterY_ - 4) + "px";
-}
-GroundOverlayEX_element_centerspotalt.prototype.adjustEditingLLQ_ = function(pBoundsBox) {		
-	this.adjustCommonLLQ_();
-}
-GroundOverlayEX_element_centerspotalt.prototype.adjustDrawLLQ_ = function(pBoundsBox) {
-	this.adjustCommonLLQ_();
-}
-GroundOverlayEX_element_centerspotalt.prototype.adjustSizingLLQ_ = function(pHandle, pDeltaX, pDeltaY, pBoundsBox) {
-	this.adjustCommonLLQ_();
-}
-GroundOverlayEX_element_centerspotalt.prototype.adjustRevertLLQ_ = function(pBoundsBox) {
-	this.adjustCommonLLQ_();
-}
-GroundOverlayEX_element_centerspotalt.prototype.adjustCommonLLQ_ = function() {
-	var xy = this.parentGOEX_.display_element_.computeCenterOfQuad_(1);	// diagonals method
-	this.node_.style.left = (xy[0] - 4) + "px";
-	this.node_.style.top = (xy[1] - 4) + "px";
-}
 
 //////////////////////////////////////////////////////////////////////////////
 // ZoomArray code including ZoomEntry* classes 
@@ -4031,6 +2291,11 @@ GroundOverlayEX_mgr.prototype.getVersion = function() {
 GroundOverlayEX_mgr.prototype['getMap'] = GroundOverlayEX_mgr.prototype.getMap;
 GroundOverlayEX_mgr.prototype.getMap = function() {
 	return this.map_;
+}
+GroundOverlayEX_mgr.prototype['supportsEditing'] = GroundOverlayEX_mgr.prototype.supportsEditing;
+GroundOverlayEX_mgr.prototype.supportsEditing = function() {
+	if (typeof this.editingPresent_ === "function") return true;
+	return false;
 }
 GroundOverlayEX_mgr.prototype['addGOEX'] = GroundOverlayEX_mgr.prototype.addGOEX;
 GroundOverlayEX_mgr.prototype.addGOEX = function(pGOEX) {
