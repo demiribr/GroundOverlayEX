@@ -1,7 +1,7 @@
 Defines primary javascript classes:  GroundOverlayEx, GroundOverlayEX_mgr, LatLngQuad, ZoomArray, ZoomEntryZoom, ZoomEntryAlt_ft, ZoomEntryAlt_m
 Classes are extended from google.maps.OverlayView (GroundOverlayEx) and google.maps.MVCObject (all the rest)
 Libraries needed:  (javascript) Google Maps API V3, Numeric.js
-Version 1.4
+Version 1.41
 Attribution: Mike Maschino, Google Maps API
 License: MIT License (see License.txt file)
 
@@ -26,6 +26,10 @@ New data types:	  LatLngQuad, zoomArray, zoomEntryZoom, zoomEntryAlt_ft, zoomEnt
 It is strongly suggested to understand the KML definition of GroundOverlay (plus Google's extensions);
 this class provides nearly all the capabilities as the KML GroundOverlay object
 https://developers.google.com/kml/documentation/kmlreference#groundoverlay
+
+There are two javascript files:
+	groundoverlayEX.js		- supports all capabilities except editing (and therefore takes up less browser RAM per-object)
+	groundoverlayEXeditable.js	- supports all capabilities including editing
 
 ================
 LatLngQuad class
@@ -210,7 +214,7 @@ Extended Methods:
 .getZindex()			Number				get the override zIndex value; if > 0 then drawOrder and ZindexBase are ignored
 .setZindex(Number:zIndex)	none				set the override zIndex value, and image will change zIndex order; if > 0 then drawOrder and ZindexBase are ignored
 .getEffectiveZindex()		Number				returns the zIndex in-use by the GroundOverlayEX object regardless of how it was calculated
-
+.supportsEditing()		Boolean				return: true=this javascript class file includes the editing capabilities; false=this javascript class file cannot perform editing
 
 Display Mode Notes:
 -------------------
@@ -418,6 +422,7 @@ Methods:				Returns			Description
 .getVersion()				String			returns the version code of the GroundOverlayEX_mgr class
 
 .getMap()				google.maps.Map		(see the Google Maps API V3 definitions for a GroundOverlay)
+.supportsEditing()			Boolean			return: true=this javascript class file includes the editing capabilities; false=this javascript class file cannot perform editing
 .addGOEX(GroundOverlayEX)		Boolean			true=add was successful; currently the only reason for rejection is that the GroundOverlayEX does not have a RegionBounds defined or calculated
 .startOfBulkload()			none			indicates the start of a bulk load process of many GOEXs
 .addGOEXbulkload(GroundOverlayEX)	Boolean			one of a large bulk to GOEXs being added; when bulk loading, PreloadRegion is ignored until [.endOfBulkload() is called to help reduce simultaneous download of imagery]
