@@ -3,7 +3,7 @@
 //////////////////////////////////////////////////////////////////////////////
 /*
 Extended GroundOverlay class for Google Maps API V3
-Version: 1.41
+Version: 1.42
 
 Source Respository: https://github.com/azmikemm/GroundOverlayEX
 Documentation: see "documentation.txt" in github repository for full API description
@@ -37,8 +37,8 @@ SOFTWARE.
 //////////////////////////////////////////////////////////////////////////////
 // GroundOverlayEX code
 //////////////////////////////////////////////////////////////////////////////
-var GROUNDOVERLAYEX_VERSION = "1.41";
-var GOEX_EDITING_EXPANSE = 150;
+var GROUNDOVERLAYEX_VERSION = "1.42";
+var GOEX_EDITING_EXPANSE = 300;
 var GOEX_ZINDEX_BASE_DEFAULT = 1000;
 var GOEX_ZINDEX_EDITING_PLUSUP = 5000;
 var GOEX_CURSORDIRECTIONS = [];
@@ -51,6 +51,14 @@ GOEX_CURSORDIRECTIONS[5] = "ne-resize";	// top-right
 GOEX_CURSORDIRECTIONS[6] = "ns-resize";	// top
 GOEX_CURSORDIRECTIONS[7] = "nw-resize";	// top-left
 function GOEXsign(x) { return x ? x < 0 ? -1 : 1 : 0; }
+
+// convenience extension to Google Maps API V3
+google.maps.LatLngBounds.prototype['clone'] = google.maps.LatLngBounds.prototype.clone;
+google.maps.LatLngBounds.prototype.clone = function() {
+	return new google.maps.LatLngBounds(this.getSouthWest(), this.getNorthEast());
+}
+
+
 // Public methods
 GroundOverlayEX.prototype = new google.maps.OverlayView();
 window['GroundOverlayEX'] = GroundOverlayEX;
@@ -78,7 +86,6 @@ function GroundOverlayEX(url, bounds, GO_opts) {
 	this.llqType_ = "u";		// R=rectangular, N=non-rectangular, u=unknown
 	this.llq_ = null;
 	this.llqOrig_ = null;
-	if (bounds != undefined && bounds != null) { this.bounds_ = bounds; this.boundsOrig_ = bounds; }
   	this.url_ = url;
 	this.zoomArray_ = null;
 	this.GO_opts_ = GO_opts;
@@ -90,7 +97,7 @@ function GroundOverlayEX(url, bounds, GO_opts) {
 	this.zIndex_ = 0;
 	this.zIndexBase_ = 0;
 	this.opacity_ = 1;
-	this.rotate_ = 0;
+	this.rotateCCW_ = 0;
 	this.clickStarted_ = false;
 	this.qtyListeners_ = 0;
 	this.qtyImgsLoaded_ = 0;
@@ -129,15 +136,22 @@ function GroundOverlayEX(url, bounds, GO_opts) {
 	this.editable_ = false;
 	this.doEditing_ = false;
 	this.isEditing_ = false;
+	this.editingShapeChangedOrMoved_ = false;
 	this.editingForbidNonrect_ = false;
+	this.editingPinImageToMap_ = false;
+	this.editingEndingCallback_ = null;
 	this.editingImageLoadedCallback_ = null;
-	this.editing_revert_element_ = null;
 	this.editing_elements_ = null;
+	this.editing_element_Editing_ = -1;
 	this.editListener1_ = null;
 	this.editListener2_ = null;
 	this.editListener3_ = null;
 
 	// process any passed options
+	if (bounds != undefined && bounds != null) { 
+		this.boundsOrig_ = bounds; 
+		this.bounds_ = bounds.clone();
+	}
 	if (GO_opts != undefined && GO_opts != null) {
 		if (GO_opts.opacity != undefined) { this.setOpacity(Number(GO_opts.opacity)); }
 		if (GO_opts.clickable != undefined) { if (GO_opts.clickable == true) this.clickable_ = true; }
@@ -154,8 +168,16 @@ function GroundOverlayEX(url, bounds, GO_opts) {
 		if (GO_opts.cropFromBottom != undefined) { if (Number(GO_opts.cropFromBottom) > 0) { this.cropFromBottom_ = Math.round(Number(GO_opts.cropFromBottom)); } }
 		if (GO_opts.cropToWidth != undefined) { if (Number(GO_opts.cropToWidth) > 0) { this.cropToWidth_ = Math.round(Number(GO_opts.cropToWidth)); } }
 		if (GO_opts.cropToHeight != undefined) { if (Number(GO_opts.cropToHeight) > 0) { this.cropToHeight_ = Math.round(Number(GO_opts.cropToHeight)); } }
-		if (GO_opts.latlngQuad != undefined && GO_opts.latlngQuad != null) { this.llq_ = GO_opts.latlngQuad; this.llqType_ = "N"; this.llqOrig_ = GO_opts.latlngQuad; this.bounds_ = null; }
-		if (GO_opts.regionBounds != undefined && GO_opts.regionBounds != null) { this.regionBounds_ = GO_opts.regionBounds; this.regionBoundsOrig_ = GO_opts.regionBounds; }
+		if (GO_opts.latlngQuad != undefined && GO_opts.latlngQuad != null) { 
+			this.llqType_ = "N"; 
+			this.llqOrig_ = GO_opts.latlngQuad; 
+			this.llq_ = GO_opts.latlngQuad.clone();
+			this.bounds_ = null;
+		}
+		if (GO_opts.regionBounds != undefined && GO_opts.regionBounds != null) { 
+			this.regionBoundsOrig_ = GO_opts.regionBounds; 
+			this.regionBounds_ = GO_opts.regionBounds.clone();
+		}
 		if (GO_opts.zoomArray != undefined && GO_opts.zoomArray != null) { this.zoomArray_ = GO_opts.zoomArray; }
 		if (GO_opts.clickableEvents != undefined) {
 			// this.clickableEvents_: 1=click, 2=dblclick, 4=rightclick, 8=mouseover, 16=mouseout, 32=mousedown, 64=mouseup
@@ -216,13 +238,15 @@ function GroundOverlayEX(url, bounds, GO_opts) {
 		this.displayMode_ = "Q";
 		this.position =	this.llq_.getPosition();
 		if (this.regionBounds_ == null) { 
-			this.regionBounds_ = this.llq_.getBoundsBox(); 
+			this.regionBoundsOrig_ = this.llq_.getBoundsBox();
+			this.regionBounds_ = this.regionBoundsOrig_.clone();
 		}
 	} else if (this.bounds_ != null) {
 		this.displayMode_ = "B";
 		this.position =	this.bounds_.getCenter();
 		if (this.regionBounds_ == null) { 
-			this.regionBounds_ = bounds; 
+			this.regionBoundsOrig_ = bounds.clone();
+			this.regionBounds_ = bounds.clone();
 		}
 	} else {
 		this.displayMode_ = "u";
@@ -252,7 +276,7 @@ function GroundOverlayEX(url, bounds, GO_opts) {
 GroundOverlayEX.prototype['destroy'] = GroundOverlayEX.prototype.destroy;
 GroundOverlayEX.prototype.destroy = function() {
 	// destructor call; not recoverable
-	this.OnRemove();
+	this.onRemove();
 
 	this.position = null;
 	this.manager_ = null;
@@ -273,7 +297,7 @@ GroundOverlayEX.prototype.destroy = function() {
 	this.imgsRetry_ = null;
 	this.display_element_ = null;
 	this.editingImageLoadedCallback_ = null;
-	this.editing_revert_element_ = null;
+	this.editingEndingCallback_ = null;
 	this.editing_elements_ = null;
 }
 
@@ -324,87 +348,88 @@ GroundOverlayEX.prototype.draw = function() {
 	// this also gets called when images are swapped due to panning and zooming;
 	// hence we always need to translate latlngs to map coordinates
 	// need to assist the garbage collect process since this gets called lot and creates objects and arrays
-	if (this.display_element_.isMapped_()) {
- 		var overlayProjection = this.getProjection();
-		if (this.displayMode_ == "Q") {
-			// rectangular or non-rectangular latlngQuad method; build the corner x,y dataset; corners order is BL, BR, TR, TL
-			// need to "DivPixel" in this case since we are working within the Map Div context
-			var blLL = this.llq_.getBottomLeft();
-			var brLL = this.llq_.getBottomRight();
-			var trLL = this.llq_.getTopRight();
-			var tlLL = this.llq_.getTopLeft();
-			var gmpoint1 = overlayProjection.fromLatLngToDivPixel(blLL);
-			var gmpoint2 = overlayProjection.fromLatLngToDivPixel(brLL);
-			var gmpoint3 = overlayProjection.fromLatLngToDivPixel(trLL);
-			var gmpoint4 = overlayProjection.fromLatLngToDivPixel(tlLL);
-			blLL = null;	// explicitly pre-release the google maps LatLng objects
-			brLL = null;
-			trLL = null;
-			tlLL = null;
+	if (this.display_element_ == null) return;
+	if (!this.display_element_.isMapped_()) return;
 
-			// deliberately create a new array object with sub-arrays; this array will be stored in the this.display_element_ object, and any prior array released
-			var corners = [];
-			var point1 = [0,0];
-			point1[0] = Math.round(gmpoint1.x);
-			point1[1] = Math.round(gmpoint1.y);
-			corners[0] = point1;
-			var point2 = [0,0];
-			point2[0] = Math.round(gmpoint2.x);
-			point2[1] = Math.round(gmpoint2.y);
-			corners[1] = point2;
-			var point3 = [0,0];
-			point3[0] = Math.round(gmpoint3.x);
-			point3[1] = Math.round(gmpoint3.y);
-			corners[2] = point3;
-			var point4 = [0,0];
-			point4[0] = Math.round(gmpoint4.x);
-			point4[1] = Math.round(gmpoint4.y);
-			corners[3] = point4;
+ 	var overlayProjection = this.getProjection();
+	if (this.displayMode_ == "Q") {
+		// rectangular or non-rectangular latlngQuad method; build the corner x,y dataset; corners order is BL, BR, TR, TL
+		// need to "DivPixel" in this case since we are working within the Map Div context
+		var blLL = this.llq_.getBottomLeft();
+		var brLL = this.llq_.getBottomRight();
+		var trLL = this.llq_.getTopRight();
+		var tlLL = this.llq_.getTopLeft();
+		var gmpoint1 = overlayProjection.fromLatLngToDivPixel(blLL);
+		var gmpoint2 = overlayProjection.fromLatLngToDivPixel(brLL);
+		var gmpoint3 = overlayProjection.fromLatLngToDivPixel(trLL);
+		var gmpoint4 = overlayProjection.fromLatLngToDivPixel(tlLL);
+		blLL = null;	// explicitly pre-release the google maps LatLng objects
+		brLL = null;
+		trLL = null;
+		tlLL = null;
 
-			// put the image into its proper place
-			this.display_element_.doDrawLLQ_(corners);
+		// deliberately create a new array object with sub-arrays; this array will be stored in the this.display_element_ object, and any prior array released
+		var corners = [];
+		var point1 = [0,0];
+		point1[0] = Math.round(gmpoint1.x);
+		point1[1] = Math.round(gmpoint1.y);
+		corners[0] = point1;
+		var point2 = [0,0];
+		point2[0] = Math.round(gmpoint2.x);
+		point2[1] = Math.round(gmpoint2.y);
+		corners[1] = point2;
+		var point3 = [0,0];
+		point3[0] = Math.round(gmpoint3.x);
+		point3[1] = Math.round(gmpoint3.y);
+		corners[2] = point3;
+		var point4 = [0,0];
+		point4[0] = Math.round(gmpoint4.x);
+		point4[1] = Math.round(gmpoint4.y);
+		corners[3] = point4;
 
-			// make proper changes to editing div's if present using the results of the corners just set
-			if (this.editing_elements_ != null) {
-				var bb = this.display_element_.getBoundsBox_();		// returns BL, TR, size
-				for (var i in this.editing_elements_) {
-					this.editing_elements_[i].adjustDrawLLQ_(bb);
-				}
-				bb = null;
+		// put the image into its proper place
+		this.display_element_.doDrawLLQ_(corners);
+
+		// make proper changes to editing div's if present using the results of the corners just set
+		if (this.editing_elements_ != null) {
+			var bb = this.display_element_.getBoundsBox_();		// returns BL, TR, size
+			for (var i in this.editing_elements_) {
+				this.editing_elements_[i].adjustDrawLLQ_(bb);
 			}
+			bb = null;
+		}
 
-		} else if (this.displayMode_ == "B") {
-			// rectangular latlngBox method;
-			// need to "DivPixel" in this case since we are working within the Map Div context;
-			var swLL = this.bounds_.getSouthWest();
-			var neLL = this.bounds_.getNorthEast();
- 			var sw = overlayProjection.fromLatLngToDivPixel(swLL);
- 			var ne = overlayProjection.fromLatLngToDivPixel(neLL);
-			swLL = null;	// explicitly pre-release the google maps LatLng objects
-			neLL = null;
-			var nonBorderLeft = Math.round(sw.x);
-			var nonBorderTop = Math.round(ne.y)	
-			var nonBorderWidth = Math.round(ne.x - sw.x);
-			var nonBorderHeight = Math.round(sw.y - ne.y);
-			sw = null;	// explicitly release the google maps Point objects
-			ne = null;
+	} else if (this.displayMode_ == "B") {
+		// rectangular latlngBox method;
+		// need to "DivPixel" in this case since we are working within the Map Div context;
+		var swLL = this.bounds_.getSouthWest();
+		var neLL = this.bounds_.getNorthEast();
+ 		var sw = overlayProjection.fromLatLngToDivPixel(swLL);
+ 		var ne = overlayProjection.fromLatLngToDivPixel(neLL);
+		swLL = null;	// explicitly pre-release the google maps LatLng objects
+		neLL = null;
+		var nonBorderLeft = Math.round(sw.x);
+		var nonBorderTop = Math.round(ne.y)	
+		var nonBorderWidth = Math.round(ne.x - sw.x);
+		var nonBorderHeight = Math.round(sw.y - ne.y);
+		sw = null;	// explicitly release the google maps Point objects
+		ne = null;
 
-			// re-size and re-position (non-rotated) the image;
-			// then perform rotation which will also recompute the LLQ and the RegionBounds
-			this.display_element_.doDrawLLB_(nonBorderLeft, nonBorderTop, nonBorderWidth, nonBorderHeight);
-			this.setRotation_(this.rotate_);
+		// re-size and re-position (non-rotated) the image;
+		// then perform rotation which will also recompute the LLQ and the RegionBounds
+		this.display_element_.doDrawLLB_(nonBorderLeft, nonBorderTop, nonBorderWidth, nonBorderHeight);
+		this.setRotation_(this.rotateCCW_);
 
-			// make proper changes to editing div's if present
-			if (this.editing_elements_ != null) {
-				for (var i in this.editing_elements_) {
-					// always do size before position
-					this.editing_elements_[i].adjustDrawLLB_(nonBorderLeft, nonBorderTop, nonBorderWidth, nonBorderHeight);
-				}
+		// make proper changes to editing div's if present
+		if (this.editing_elements_ != null) {
+			for (var i in this.editing_elements_) {
+				// always do size before position
+				this.editing_elements_[i].adjustDrawLLB_(nonBorderLeft, nonBorderTop, nonBorderWidth, nonBorderHeight);
 			}
 		}
-		// reset opacity of the displayed image		
-		this.display_element_.doOpacity_();
 	}
+	// reset opacity of the displayed image		
+	this.display_element_.doOpacity_();
 }
 GroundOverlayEX.prototype['getBounds'] = GroundOverlayEX.prototype.getBounds;
 GroundOverlayEX.prototype.getBounds = function() {
@@ -429,8 +454,16 @@ GroundOverlayEX.prototype.setOpacity = function(pOpacity) {
 		if (pOpacity > 1) { this.opacity_ = 1; }
 		else { this.opacity_ = pOpacity; }
 	}
-	if (this.display_element_.isMapped_()) { this.display_element_.doOpacity_(); }
+	if (this.display_element_ != null) {
+		if (this.display_element_.isMapped_()) { this.display_element_.doOpacity_(); }
+		if (this.editing_elements_ != null) {
+			for (var i in this.editing_elements_) {
+				this.editing_elements_[i].doOpacity_();
+			}
+		}
+	}
 }
+
 
 ////////////////////////
 // extended capabilities
@@ -510,7 +543,7 @@ GroundOverlayEX.prototype.getRegionBounds = function() {
 GroundOverlayEX.prototype['getRotation'] = GroundOverlayEX.prototype.getRotation;
 GroundOverlayEX.prototype.getRotation = function() {
 	// return: Number=image rotation in degrees counter-clockwise; meaningless for a LatLngQuad-mode
-	return this.rotate_;
+	return this.rotateCCW_;
 }
 GroundOverlayEX.prototype['getDrawOrder'] = GroundOverlayEX.prototype.getDrawOrder;
 GroundOverlayEX.prototype.getDrawOrder = function() {
@@ -591,22 +624,22 @@ GroundOverlayEX.prototype.mgrRecommendLoadImage = function() {
 GroundOverlayEX.prototype.mgrGetStats = function() {
 	var theResults = [0,0,0,0,0,0,0,0];
 
-	if (this.mapAdded_) theResults[0] = 1;							// GOEX has been placed under google maps management
+	if (this.mapAdded_) theResults[0] = 1;									// GOEX has been placed under google maps management
 
-	theResults[1] = this.qtyListeners_;							// quantity of enabled listeners
+	theResults[1] = this.qtyListeners_;									// quantity of enabled listeners
 
 	for (var i in this.imgs_) {
-		if (this.imgsLoaded_[i] == 1) theResults[2]++					// quantity of in-progress image downloads
+		if (this.imgsLoaded_[i] == 1) theResults[2]++							// quantity of in-progress image downloads
 		else if (this.imgsLoaded_[i] >= 2) {			
-			theResults[3]++;							// quantity of fully downloaded images
-			theResults[4] += (this.imgs_[i].width * this.imgs_[i].height);		// quantity of size of downloaded images
+			theResults[3]++;									// quantity of fully downloaded images
+			theResults[4] += (this.imgs_[i].naturalWidth * this.imgs_[i].naturalHeight);		// quantity of size of downloaded images
 		}
-		theResults[5] += this.imgsRetry_[i];						// quantity of recent retry attempts
+		theResults[5] += this.imgsRetry_[i];								// quantity of recent retry attempts
 	}
 
-	theResults[6] = 1;									// quantity of loaded elements
+	theResults[6] = 1;											// quantity of loaded elements
 	if (this.editing_elements_ != null) theResults[6] += this.editing_elements_.length;
-	if (this.display_element_.isMapped_()) theResults[7] = 1;				// image is showing on the map
+	if (this.display_element_.isMapped_()) theResults[7] = 1;						// image is showing on the map
 	return theResults;
 }
 
@@ -677,10 +710,9 @@ GroundOverlayEX.prototype.emplaceProperListeners_ = function() {
 		} else {
 			if (this.imageListener7_ != null) { google.maps.event.removeListener(this.imageListener7_); this.imageListener7_ = null; }
 		}
-		if (this.isEditing_) {
+		if (this.isEditing_ && !this.editingPinImageToMap_) {
 			this.qtyListeners_ =  this.qtyListeners_ + 2;
-			var el = null;
-			for (var i in this.editing_elements_) { if (this.editing_elements_[i].id_ == "edt") { el = this.editing_elements_[i].node_; } }
+			el = this.editing_elements_[this.editing_element_Editing_].node_;
 			if (this.editListener1_ == null) { this.editListener1_ = google.maps.event.addDomListener(this.display_element_.node_, "mousemove", function(evt) { GroundOverlayEX_imageMouseMove_Editing_(that, evt); }); }
 			if (this.editListener2_ == null && el != null) { this.editListener2_ = google.maps.event.addDomListener(el, "mousemove", function(evt) { GroundOverlayEX_imageMouseMove_Editing_(that, evt); }); }
 			if (this.editListener3_ == null && el != null) { this.editListener3_ = google.maps.event.addDomListener(el, "mouseup", function(evt) { GroundOverlayEX_imageMouseUp_(that, evt); }); }
@@ -722,7 +754,7 @@ GroundOverlayEX.prototype.removeAllListeners_ = function() {
 	if (this.editListener3_ != null) { google.maps.event.removeListener(this.editListener3_); this.editListener3_ = null; }
 }
 GroundOverlayEX.prototype.reassessRegion_ = function(pGOEXobj) {
-console.log("GOEX.reassessRegion_ CALLED FROM TIMEOUT DUE TO CANVAS FAILURE");
+	// call assessRegion_ after timeout to deal with FireFox Canvas failures
 	pGOEXobj.assessRegion_();
 }
 GroundOverlayEX.prototype.assessRegion_ = function() {
@@ -741,16 +773,16 @@ GroundOverlayEX.prototype.assessRegion_ = function() {
 			var success = this.doDisplayImageNumber_(r);
 			if (!success) { 
 				// the displayed element failed; many times is due to a bad image, or perhaps insufficient crop information;
-					// or for Firefox, their Canvas bugs during cropping
-					if ((this.imgs_[r].width == 0 || this.imgs_[r].height == 0) && this.imgsLoaded_[r] >= 2) {
-						// image is damaged; unload it then reload it
-console.log("***FAILURE: GOEX.assessRegion_ "+this.id_+" "+this.displayText_+" inx="+r+" PREVIOUSLY LOADED EDITING IMAGE IS BAD!");	// ??!? temporary
-						this.doUnloadImageNumber_(r);
-						this.doLoadImageNumber_(r); 
-					}
-					// canvas errors are handled already by the display_element_ which includes an auto-call to this method;
-					// missing cropping information will auto-call this method when new images are available
+				// or for Firefox, their Canvas bugs during cropping
+				if ((this.imgs_[r].width == 0 || this.imgs_[r].height == 0) && this.imgsLoaded_[r] >= 2) {
+					// image is damaged; unload it then reload it
+					this.doUnloadImageNumber_(r);
+					this.doLoadImageNumber_(r); 
+				}
+				// canvas errors are handled already by the display_element_ which includes an auto-call to this method;
+				// missing cropping information will auto-call this method when new images are available
 			} else {
+				// the passed parameter url image is showing; auto-activate editing if it is pending
 				if (this.doEditing_ && !this.isEditing_) { this.setDoEditing(this.doEditing_); }
 			}
 		}
@@ -775,7 +807,6 @@ console.log("***FAILURE: GOEX.assessRegion_ "+this.id_+" "+this.displayText_+" i
 					// or for Firefox, their Canvas bugs during cropping
 					if ((this.imgs_[r].width == 0 || this.imgs_[r].height == 0) && this.imgsLoaded_[r] >= 2) {
 						// image is damaged; unload it then reload it
-console.log("***FAILURE: GOEX.assessRegion_ "+this.id_+" "+this.displayText_+" inx="+r+" PREVIOUSLY LOADED IMAGE IS BAD!");	// ??!? temporary
 						this.doUnloadImageNumber_(r);
 						this.doLoadImageNumber_(r); 
 					}
@@ -878,8 +909,8 @@ GroundOverlayEX.prototype.imgFinishedLoading_ = function(pImg) {
 		if (img.src == this.url_) {
 			// this is the passed parameter url, and OrigImgWidth and Height have not yet been determined,
 			// so preserve this information for events and cropping
-			this.origImgWidth_ = img.width;
-			this.origImgHeight_ = img.height;
+			this.origImgWidth_ = img.naturalWidth;
+			this.origImgHeight_ = img.naturalHeight;
 		}
 	}
 	if (this.cropping_) {
@@ -909,7 +940,7 @@ GroundOverlayEX.prototype.imgFinishedLoading_ = function(pImg) {
 
 	// image is going to be used or saved
 	this.qtyImgsLoaded_++;
-	this.memoryImgsLoaded_ += (img.width * img.height);
+	this.memoryImgsLoaded_ += (img.naturalWidth * img.naturalHeight);
 	this.imgsRetry_[index] = 0;
 
 	// is the GOEX for non-cropped images?
@@ -957,7 +988,7 @@ GroundOverlayEX.prototype.unloadAllImgs_ = function() {
 GroundOverlayEX.prototype.doUnloadImageNumber_ = function(pIndex) {
 	// however do not unload it if it is actively being displayed or it is actively being downloaded
 	if (pIndex != this.imgDisplayed_ && this.imgsLoaded_[pIndex] >= 2) {
-		this.memoryImgsLoaded_ -= (this.imgs_[pIndex].width * this.imgs_[pIndex].height);
+		this.memoryImgsLoaded_ -= (this.imgs_[pIndex].naturalWidth * this.imgs_[pIndex].naturalHeight);
 		this.qtyImgsLoaded_--;
 		this.imgsRetry_[pIndex] = 0;
 		this.imgsLoaded_[pIndex] = 0;
@@ -1027,11 +1058,11 @@ GroundOverlayEX.prototype.doDisplayImageNumber_ = function(pIndex) {
 			if (!success || !this.display_element_.isMapped_()) return false;
 			
 			// set the z-index properly, then activate proper listeners
+			this.imgDisplayed_ = pIndex;
 			this.doZindex_();
 			this.emplaceProperListeners_();
 
 			// now force a draw
-			this.imgDisplayed_ = pIndex;
 			this.draw();
 		}
 	} else {
@@ -1057,15 +1088,15 @@ GroundOverlayEX.prototype.doZindex_ = function() {
 	}
 }
 GroundOverlayEX.prototype.setRotation_ = function(pDegCCW) {
-	if (pDegCCW < -360) { this.rotate_ = 0; }
+	if (pDegCCW < -360) { this.rotateCCW_ = 0; }
 	else {
-		if (pDegCCW < -180) { this.rotate_ = pDegCCW + 360; }
+		if (pDegCCW < -180) { this.rotateCCW_ = pDegCCW + 360; }
 		else {
-			if (pDegCCW > 360) { this.rotate_ = 0; }
+			if (pDegCCW > 360) { this.rotateCCW_ = 0; }
 			else {
-				if (pDegCCW > 180) { this.rotate_ = pDegCCW - 360; }
+				if (pDegCCW > 180) { this.rotateCCW_ = pDegCCW - 360; }
 				else {
-					this.rotate_ = pDegCCW;
+					this.rotateCCW_ = pDegCCW;
 				}
 			}
 		}
@@ -1080,22 +1111,25 @@ GroundOverlayEX.prototype.setRotation_ = function(pDegCCW) {
 		}
 	}
 }
-GroundOverlayEX.prototype.adjustForRotation_ = function(cX, cY, pX, pY) {
+GroundOverlayEX.prototype.adjustForRotation_ = function(pCenterXdiv, pCenterYdiv, pXdiv, pYdiv) {
 	// rotate the non-rotated pX,pY around cX,cY according to current rotate setting
-	return this.doAdjustForRotation_(cX, cY, pX, pY, this.rotate_);
+	var point = this.doAdjustForRotation_(pCenterXdiv, pCenterYdiv, pXdiv, pYdiv, this.rotateCCW_)
+	return point;
 }
-GroundOverlayEX.prototype.deadjustForRotation_ = function(cX, cY, pX, pY) {
+GroundOverlayEX.prototype.deadjustForRotation_ = function(pCenterXdiv, pCenterYdiv, pXdiv, pYdiv) {
 	// de-rotate the rotated px,py around cX,cY according to the current rotate setting
-	return this.doAdjustForRotation_(cX, cY, pX, pY, -this.rotate_);
+	var point =  this.doAdjustForRotation_(pCenterXdiv, pCenterYdiv, pXdiv, pYdiv, -this.rotateCCW_);
+	return point;
 }
-GroundOverlayEX.prototype.doAdjustForRotation_ = function(cX, cY, pX, pY, pRotation) {
+GroundOverlayEX.prototype.doAdjustForRotation_ = function(cX, cY, pX, pY, pRotationCCW) {
 	// rotate or de-rotate a point
-	if (pRotation == 0) { return [pX, pY]; }
-        var a = pRotation * Math.PI / 180;
+	if (pRotationCCW == 0) { return [pX, pY]; }
+	// the below algorith is for +Y axis, but HTML uses -Y axis, so must correct for this be inverting the rotation
+        var a = -pRotationCCW * Math.PI / 180;
 
         // Subtract midpoints, so that midpoint is translated to origin and add it in the end again
-        var xr = (pX - cX) * Math.cos(a) - (pY - cY) * Math.sin(a) + cX;
-        var yr = (pX - cX) * Math.sin(a) + (pY - cY) * Math.cos(a) + cY;
+        var xr = Math.round((((pX - cX) * Math.cos(a)) - ((pY - cY) * Math.sin(a))) + cX);
+        var yr = Math.round((((pX - cX) * Math.sin(a)) + ((pY - cY) * Math.cos(a))) + cY);
     	return [xr, yr];
 }
 GroundOverlayEX.prototype.recomputeRegionBounds_ = function() {
@@ -1121,7 +1155,7 @@ GroundOverlayEX.prototype.recomputeRegionBounds_ = function() {
 }
 GroundOverlayEX.prototype.computeLLQfromBounds_ = function() {
 	// corners order is:  BL, BR, TR, TL
-	var corners = this.display_element_.getCornersXY_();
+	var corners = this.display_element_.getCornersXYdiv_();
 	var overlayProjection = this.getProjection();
 
 	var gmpoint = new google.maps.Point(corners[0][0], corners[0][1]);
@@ -1155,6 +1189,19 @@ GroundOverlayEX.prototype.getCenterOfMapDiv_ = function() {
 	var centerY = (node.offsetTop + node.clientTop) + Math.round(node.clientHeight / 2);
 	return [centerX, centerY];
 }
+GroundOverlayEX.prototype.whichBrowser_ = function() {
+	// dont' care if the userAgent string is lying; this is used mostly for differences in mouseEvent properties differences
+
+	var ua = navigator.userAgent.toLowerCase();
+	if (ua.indexOf(" opera") > -1) return "O";
+	if (ua.indexOf(" opr") > -1) return "O";
+	if (ua.indexOf(" chrome") > -1) return "C";
+	if (ua.indexOf(" safari") > -1) return "S";
+	if (ua.indexOf(" firefox") > -1) return "F";
+	if (ua.indexOf(" msie") > -1) return "I";
+	if (ua.indexOf(" trident") > -1) return "I";
+	return "?";
+}
 GroundOverlayEX.prototype.shouldClickable_ = function(pEventNumber) {
 	// this.clickableEvents_: 1=click, 2=dblclick, 4=rightclick, 8=mouseover, 16=mouseout, 32=mousedown, 64=mouseup
 	if (this.clickable_ && this.map != null) {
@@ -1169,28 +1216,32 @@ GroundOverlayEX.prototype.getEventInfo_ = function(pMouseEvent) {
 	var retInfo = [0,0,0,0];
 	retInfo[0] = -1;
 	retInfo[1] = -1;
+	deNode = this.display_element_.node_;
+	var browser = this.whichBrowser_();
 
-	// get the point-of-click on the image; in both cases below, the click coordinates *includes* borders (and are therefore w/r/t offsetLeft, offsetTop, offsetWidth, offsetHeight)
+	// get the point-of-click on the image
 	var imgX, imgY;
-	if (pMouseEvent.offsetX == null ) { 	// Firefox
-   		imgX = pMouseEvent.layerX;
-   		imgY = pMouseEvent.layerY;
-	} else {                       // Other browsers
-  		imgX = pMouseEvent.offsetX;
-   		imgY = pMouseEvent.offsetY;
+	if (pMouseEvent.offsetX == null ) { 	
+		// most likely Firefox; layer* does include borders
+ 		imgX = Math.round(pMouseEvent.layerX) - deNode.clientLeft;
+		imgY = Math.round(pMouseEvent.layerY) - deNode.clientTop;
+	} else if (browser == "I") {
+		// Internet Explorer; offset* does NOT include borders
+  		imgX = Math.round(pMouseEvent.offsetX);
+   		imgY = Math.round(pMouseEvent.offsetY);
+	} else {                       
+		// Other browsers (Opera, Safari, chrome); offset* does include borders
+  		imgX = Math.round(pMouseEvent.offsetX) - deNode.clientLeft;
+   		imgY = Math.round(pMouseEvent.offsetY) - deNode.clientTop;
 	}
 
-	// remove the border positioning
-	deNode = this.display_element_.node_;
-	imgX -= deNode.clientLeft;
-	imgY -= deNode.clientTop;
-
+	// now that we've actually got the click coordinate on the image (or its border), determine what to provide to the application
 	if (imgX >= 0 && imgY >= 0) {
 		if (imgX <= deNode.clientWidth && imgY <= deNode.clientHeight) {
 			if (this.zoomArray_.length() > 1) {	
 				if (this.display_element_.isMapped_() && this.origImgWidth_ > 0 && this.origImgHeight_ > 0) {
-					retInfo[0] = Math.round(imgX * (this.origImgWidth_ / this.display_element_.node_.width));
-					retInfo[1] = Math.round(imgY * (this.origImgHeight_ / this.display_element_.node_.height));
+					retInfo[0] = Math.round(imgX * (this.origImgWidth_ / this.display_element_.node_.naturalWidth));
+					retInfo[1] = Math.round(imgY * (this.origImgHeight_ / this.display_element_.node_.naturalHeight));
 				}
 			} else {
 				retInfo[0] = imgX;
@@ -1201,8 +1252,12 @@ GroundOverlayEX.prototype.getEventInfo_ = function(pMouseEvent) {
 
 	// need to use ContainerPixel in this case since PageX and PageY are in the context of the entire page, not just the Map Div
 	var overlayProjection = this.getProjection();
-	var screenPoint = new google.maps.Point(pMouseEvent.pageX, pMouseEvent.pageY);
-	var pointLatLon = overlayProjection.fromContainerPixelToLatLng(screenPoint);
+	var mapDiv = this.map.getDiv();
+	var mapDivX = pMouseEvent.pageX - mapDiv.offsetLeft;
+        var mapDivY = pMouseEvent.pageY - mapDiv.offsetTop;
+
+	var divPoint = new google.maps.Point(mapDivX, mapDivY);
+	var pointLatLon = overlayProjection.fromContainerPixelToLatLng(divPoint);
 	retInfo[2] = pointLatLon.lat();
 	retInfo[3] = pointLatLon.lng();
 	return retInfo;
@@ -1215,7 +1270,7 @@ GroundOverlayEX.prototype.doQuadrilateralTransform_ = function(pNode, pSrcLeftTo
 	// normalize the original position to the left,top of the original position
 	// from and to order: TL, BL, TR, BR
 	// this gets called alot, and creates alot of array objects, so be explicit about garbage collection
-	// ??? further optimization: get rid of from and to intermediate arrays
+	// ??? future further optimization: get rid of from and to intermediate arrays
 	var i;
 	var from = [];
 	from.push({ x: 0, y: 0});
@@ -1257,13 +1312,138 @@ GroundOverlayEX.prototype.doQuadrilateralTransform_ = function(pNode, pSrcLeftTo
 	var H = [ h[0], h[3], 0, h[6], h[1], h[4], 0, h[7], 0, 0, 1, 0, h[2], h[5], 0, 1 ];
 	h = null;
 	var ts = "matrix3d(" + H.join(", ") + ")";
-	H = null;
-			  
-	pNode.style["-webkit-transform"] = ts;	  
+	H = null;			  
+
+	pNode.style["-webkit-transform"] = ts;	 
+	pNode.style["-moz-transform"] = ts; 
 	pNode.style["-ms-transform"] = ts;
 	pNode.style["-o-transform"] = ts;
 	pNode.style.transform = ts;
 }
+GroundOverlayEX.prototype.convertNodePointToParentPoint_ = function(pNode, pNodeX, pNodeY) {
+	// note this works for LLQ-mode and for LLB-mode since the rotate transform is a specific case of the general transform
+	// source: https://mxr.mozilla.org/mozilla-beta/source/layout/base/nsLayoutUtils.cpp#2371
+	var cssStyleDec = window.getComputedStyle(pNode, null);
+	var cssStyleTransform = cssStyleDec.getPropertyValue("-webkit-transform") ||
+         			cssStyleDec.getPropertyValue("-moz-transform") ||
+         			cssStyleDec.getPropertyValue("-ms-transform") ||
+        			cssStyleDec.getPropertyValue("-o-transform") ||
+         			cssStyleDec.getPropertyValue("transform");
+	var matrix4x4 = cssStyleTransform.split('(')[1], matrix4x4 = matrix4x4.split(')')[0], matrix4x4 = matrix4x4.split(',');
+	for (var i=0; i<16; i++) { matrix4x4[i] = Number(matrix4x4[i]); }
+	cssStyleDec = null;
+	cssStyleTransform = null;
+
+	var divPoint = this.matrixMultiply4x4by1x2_(matrix4x4, [pNodeX + pNode.clientLeft, pNodeY + pNode.clientTop]);
+	matrix4x4 = null;
+
+	divPoint[0] = Math.round(divPoint[0] + pNode.offsetLeft);
+	divPoint[1] = Math.round(divPoint[1] + pNode.offsetTop);
+	return divPoint;
+}
+GroundOverlayEX.prototype.convertParentPointToNodePoint_ = function(pNode, pDivX, pDivY) {
+	// note this works for LLQ-mode and for LLB-mode since the rotate transform is a specific case of the general transform
+	// source: https://mxr.mozilla.org/mozilla-beta/source/layout/base/nsLayoutUtils.cpp#2371
+	var cssStyleDec = window.getComputedStyle(pNode, null);
+	var cssStyleTransform = cssStyleDec.getPropertyValue("-webkit-transform") ||
+         			cssStyleDec.getPropertyValue("-moz-transform") ||
+         			cssStyleDec.getPropertyValue("-ms-transform") ||
+        			cssStyleDec.getPropertyValue("-o-transform") ||
+         			cssStyleDec.getPropertyValue("transform");
+	var matrix4x4 = cssStyleTransform.split('(')[1], matrix4x4 = matrix4x4.split(')')[0], matrix4x4 = matrix4x4.split(',');
+	for (var i=0; i<16; i++) { matrix4x4[i] = Number(matrix4x4[i]); }
+	cssStyleDec = null;
+	cssStyleTransform = null;
+
+	var invertedMatrix4x4 = this.matrixInvert4x4_(matrix4x4);
+	matrix4x4 = null;
+
+	var nodePoint = this.matrixMultiply4x4by1x2_(invertedMatrix4x4, [pDivX - pNode.offsetLeft, pDivY - pNode.offsetTop]);
+	invertedMatrix4x4 = null;
+
+	nodePoint[0] = Math.round(nodePoint[0]);
+	nodePoint[1] = Math.round(nodePoint[1]);
+	return nodePoint;
+}
+GroundOverlayEX.prototype.matrixMultiply4x4by1x2_ = function(pMatrix3D, pPoint) {
+	// source: https://mxr.mozilla.org/mozilla-beta/source/gfx/2d/Matrix.h#528
+	var point4d1 = [pPoint[0], pPoint[1], 0, 1];
+	var point4d2 = this.matrixMultiply4x4by1x4_(pMatrix3D, point4d1);
+	for (var i=0; i<4; i++) {
+		point4d2[i] = point4d2[i] / point4d2[3];
+	}
+	return [ point4d2[0], point4d2[1] ];
+}
+GroundOverlayEX.prototype.matrixMultiply4x4by1x4_ = function(pMatrix3D, pPoint4d) {
+	// source: https://mxr.mozilla.org/mozilla-beta/source/gfx/2d/Matrix.h#506
+	var theResults = [];
+
+	//		_11,_21,_31,_41		     _12,_22,_32,_42		  _13,_23,_33,_43		_14,_24,_34,_44
+	theResults[0] = pMatrix3D[0] * pPoint4d[0] + pMatrix3D[4] * pPoint4d[1] + pMatrix3D[8]  * pPoint4d[2] + pMatrix3D[12] * pPoint4d[3];
+	theResults[1] = pMatrix3D[1] * pPoint4d[0] + pMatrix3D[5] * pPoint4d[1] + pMatrix3D[9]  * pPoint4d[2] + pMatrix3D[13] * pPoint4d[3];
+	theResults[2] = pMatrix3D[2] * pPoint4d[0] + pMatrix3D[6] * pPoint4d[1] + pMatrix3D[10] * pPoint4d[2] + pMatrix3D[14] * pPoint4d[3]; 
+	theResults[3] = pMatrix3D[3] * pPoint4d[0] + pMatrix3D[7] * pPoint4d[1] + pMatrix3D[11] * pPoint4d[2] + pMatrix3D[15] * pPoint4d[3]; 
+	return theResults;
+}
+GroundOverlayEX.prototype.matrixInvert4x4_ = function(pMatrix3D) {
+	// source: https://mxr.mozilla.org/mozilla-beta/source/gfx/2d/Matrix.h#766
+	// source: https://mxr.mozilla.org/mozilla-beta/source/gfx/2d/Matrix.cpp#179
+	var theResults = [];
+
+	var determinant = pMatrix3D[12] * pMatrix3D[9]  * pMatrix3D[6]  * pMatrix3D[3]
+          		- pMatrix3D[8]  * pMatrix3D[13] * pMatrix3D[6]  * pMatrix3D[3]
+          		- pMatrix3D[12] * pMatrix3D[5]  * pMatrix3D[10] * pMatrix3D[3]
+          		+ pMatrix3D[4]  * pMatrix3D[13] * pMatrix3D[10] * pMatrix3D[3]
+          		+ pMatrix3D[8]  * pMatrix3D[5]  * pMatrix3D[14] * pMatrix3D[3]
+          		- pMatrix3D[4]  * pMatrix3D[9]  * pMatrix3D[14] * pMatrix3D[3]
+          		- pMatrix3D[12] * pMatrix3D[9]  * pMatrix3D[2]  * pMatrix3D[7]
+          		+ pMatrix3D[8]  * pMatrix3D[13] * pMatrix3D[2]  * pMatrix3D[7]
+          		+ pMatrix3D[12] * pMatrix3D[1]  * pMatrix3D[10] * pMatrix3D[7]
+          		- pMatrix3D[0]  * pMatrix3D[13] * pMatrix3D[10] * pMatrix3D[7]
+          		- pMatrix3D[8]  * pMatrix3D[1]  * pMatrix3D[14] * pMatrix3D[7]
+          		+ pMatrix3D[0]  * pMatrix3D[9]  * pMatrix3D[14] * pMatrix3D[7]
+          		+ pMatrix3D[12] * pMatrix3D[5]  * pMatrix3D[2]  * pMatrix3D[11]
+          		- pMatrix3D[4]  * pMatrix3D[13] * pMatrix3D[2]  * pMatrix3D[11]
+          		- pMatrix3D[12] * pMatrix3D[1]  * pMatrix3D[6]  * pMatrix3D[11]
+          		+ pMatrix3D[0]  * pMatrix3D[13] * pMatrix3D[6]  * pMatrix3D[11]
+          		+ pMatrix3D[4]  * pMatrix3D[1]  * pMatrix3D[14] * pMatrix3D[11]
+          		- pMatrix3D[0]  * pMatrix3D[5]  * pMatrix3D[14] * pMatrix3D[11]
+          		- pMatrix3D[8]  * pMatrix3D[5]  * pMatrix3D[2]  * pMatrix3D[15]
+          		+ pMatrix3D[4]  * pMatrix3D[9]  * pMatrix3D[2]  * pMatrix3D[15]
+         		+ pMatrix3D[8]  * pMatrix3D[1]  * pMatrix3D[6]  * pMatrix3D[15]
+          		- pMatrix3D[0]  * pMatrix3D[9]  * pMatrix3D[6]  * pMatrix3D[15]
+          		- pMatrix3D[4]  * pMatrix3D[1]  * pMatrix3D[10] * pMatrix3D[15]
+          		+ pMatrix3D[0]  * pMatrix3D[5]  * pMatrix3D[10] * pMatrix3D[15];
+
+	theResults[0]  = pMatrix3D[9]  * pMatrix3D[14] * pMatrix3D[7] - pMatrix3D[13] * pMatrix3D[10] * pMatrix3D[7] + pMatrix3D[13] * pMatrix3D[6] * pMatrix3D[11] - pMatrix3D[5] * pMatrix3D[14] * pMatrix3D[11] - pMatrix3D[9] * pMatrix3D[6] * pMatrix3D[15] + pMatrix3D[5] * pMatrix3D[10] * pMatrix3D[15];
+	theResults[4]  = pMatrix3D[12] * pMatrix3D[10] * pMatrix3D[7] - pMatrix3D[8]  * pMatrix3D[14] * pMatrix3D[7] - pMatrix3D[12] * pMatrix3D[6] * pMatrix3D[11] + pMatrix3D[4] * pMatrix3D[14] * pMatrix3D[11] + pMatrix3D[8] * pMatrix3D[6] * pMatrix3D[15] - pMatrix3D[4] * pMatrix3D[10] * pMatrix3D[15];
+	theResults[8]  = pMatrix3D[8]  * pMatrix3D[13] * pMatrix3D[7] - pMatrix3D[12] * pMatrix3D[9]  * pMatrix3D[7] + pMatrix3D[12] * pMatrix3D[5] * pMatrix3D[11] - pMatrix3D[4] * pMatrix3D[13] * pMatrix3D[11] - pMatrix3D[8] * pMatrix3D[5] * pMatrix3D[15] + pMatrix3D[4] * pMatrix3D[9]  * pMatrix3D[15];
+	theResults[12] = pMatrix3D[12] * pMatrix3D[9]  * pMatrix3D[6] - pMatrix3D[8]  * pMatrix3D[13] * pMatrix3D[6] - pMatrix3D[12] * pMatrix3D[5] * pMatrix3D[10] + pMatrix3D[4] * pMatrix3D[13] * pMatrix3D[10] + pMatrix3D[8] * pMatrix3D[5] * pMatrix3D[14] - pMatrix3D[4] * pMatrix3D[9]  * pMatrix3D[14];
+	theResults[1]  = pMatrix3D[13] * pMatrix3D[10] * pMatrix3D[3] - pMatrix3D[9]  * pMatrix3D[14] * pMatrix3D[3] - pMatrix3D[13] * pMatrix3D[2] * pMatrix3D[11] + pMatrix3D[1] * pMatrix3D[14] * pMatrix3D[11] + pMatrix3D[9] * pMatrix3D[2] * pMatrix3D[15] - pMatrix3D[1] * pMatrix3D[10] * pMatrix3D[15];
+	theResults[5]  = pMatrix3D[8]  * pMatrix3D[14] * pMatrix3D[3] - pMatrix3D[12] * pMatrix3D[10] * pMatrix3D[3] + pMatrix3D[12] * pMatrix3D[2] * pMatrix3D[11] - pMatrix3D[0] * pMatrix3D[14] * pMatrix3D[11] - pMatrix3D[8] * pMatrix3D[2] * pMatrix3D[15] + pMatrix3D[0] * pMatrix3D[10] * pMatrix3D[15];
+	theResults[9]  = pMatrix3D[12] * pMatrix3D[9]  * pMatrix3D[3] - pMatrix3D[8]  * pMatrix3D[13] * pMatrix3D[3] - pMatrix3D[12] * pMatrix3D[1] * pMatrix3D[11] + pMatrix3D[0] * pMatrix3D[13] * pMatrix3D[11] + pMatrix3D[8] * pMatrix3D[1] * pMatrix3D[15] - pMatrix3D[0] * pMatrix3D[9]  * pMatrix3D[15];
+	theResults[13] = pMatrix3D[8]  * pMatrix3D[13] * pMatrix3D[2] - pMatrix3D[12] * pMatrix3D[9]  * pMatrix3D[2] + pMatrix3D[12] * pMatrix3D[1] * pMatrix3D[10] - pMatrix3D[0] * pMatrix3D[13] * pMatrix3D[10] - pMatrix3D[8] * pMatrix3D[1] * pMatrix3D[14] + pMatrix3D[0] * pMatrix3D[9]  * pMatrix3D[14];
+	theResults[2]  = pMatrix3D[5]  * pMatrix3D[14] * pMatrix3D[3] - pMatrix3D[13] * pMatrix3D[6]  * pMatrix3D[3] + pMatrix3D[13] * pMatrix3D[2] * pMatrix3D[7]  - pMatrix3D[1] * pMatrix3D[14] * pMatrix3D[7]  - pMatrix3D[5] * pMatrix3D[2] * pMatrix3D[15] + pMatrix3D[1] * pMatrix3D[6]  * pMatrix3D[15];
+	theResults[6]  = pMatrix3D[12] * pMatrix3D[6]  * pMatrix3D[3] - pMatrix3D[4]  * pMatrix3D[14] * pMatrix3D[3] - pMatrix3D[12] * pMatrix3D[2] * pMatrix3D[7]  + pMatrix3D[0] * pMatrix3D[14] * pMatrix3D[7]  + pMatrix3D[4] * pMatrix3D[2] * pMatrix3D[15] - pMatrix3D[0] * pMatrix3D[6]  * pMatrix3D[15];
+	theResults[10] = pMatrix3D[4]  * pMatrix3D[13] * pMatrix3D[3] - pMatrix3D[12] * pMatrix3D[5]  * pMatrix3D[3] + pMatrix3D[12] * pMatrix3D[1] * pMatrix3D[7]  - pMatrix3D[0] * pMatrix3D[13] * pMatrix3D[7]  - pMatrix3D[4] * pMatrix3D[1] * pMatrix3D[15] + pMatrix3D[0] * pMatrix3D[5]  * pMatrix3D[15];
+	theResults[14] = pMatrix3D[12] * pMatrix3D[5]  * pMatrix3D[2] - pMatrix3D[4]  * pMatrix3D[13] * pMatrix3D[2] - pMatrix3D[12] * pMatrix3D[1] * pMatrix3D[6]  + pMatrix3D[0] * pMatrix3D[13] * pMatrix3D[6]  + pMatrix3D[4] * pMatrix3D[1] * pMatrix3D[14] - pMatrix3D[0] * pMatrix3D[5]  * pMatrix3D[14];
+	theResults[3]  = pMatrix3D[9]  * pMatrix3D[6]  * pMatrix3D[3] - pMatrix3D[5]  * pMatrix3D[10] * pMatrix3D[3] - pMatrix3D[9]  * pMatrix3D[2] * pMatrix3D[7]  + pMatrix3D[1] * pMatrix3D[10] * pMatrix3D[7]  + pMatrix3D[5] * pMatrix3D[2] * pMatrix3D[11] - pMatrix3D[1] * pMatrix3D[6]  * pMatrix3D[11];
+	theResults[7]  = pMatrix3D[4]  * pMatrix3D[10] * pMatrix3D[3] - pMatrix3D[8]  * pMatrix3D[6]  * pMatrix3D[3] + pMatrix3D[8]  * pMatrix3D[2] * pMatrix3D[7]  - pMatrix3D[0] * pMatrix3D[10] * pMatrix3D[7]  - pMatrix3D[4] * pMatrix3D[2] * pMatrix3D[11] + pMatrix3D[0] * pMatrix3D[6]  * pMatrix3D[11];
+	theResults[11] = pMatrix3D[8]  * pMatrix3D[5]  * pMatrix3D[3] - pMatrix3D[4]  * pMatrix3D[9]  * pMatrix3D[3] - pMatrix3D[8]  * pMatrix3D[1] * pMatrix3D[7]  + pMatrix3D[0] * pMatrix3D[9]  * pMatrix3D[7]  + pMatrix3D[4] * pMatrix3D[1] * pMatrix3D[11] - pMatrix3D[0] * pMatrix3D[5]  * pMatrix3D[11];
+	theResults[15] = pMatrix3D[4]  * pMatrix3D[9]  * pMatrix3D[2] - pMatrix3D[8]  * pMatrix3D[5]  * pMatrix3D[2] + pMatrix3D[8]  * pMatrix3D[1] * pMatrix3D[6]  - pMatrix3D[0] * pMatrix3D[9]  * pMatrix3D[6]  - pMatrix3D[4] * pMatrix3D[1] * pMatrix3D[10] + pMatrix3D[0] * pMatrix3D[5]  * pMatrix3D[10];
+
+	for (var i=0; i<16; i++) {
+		theResults[i] /= determinant;
+	}
+	return theResults;
+}
+/*GroundOverlayEX.prototype.projectPoint_ = function(pMatrix3D, pPoint) {
+	// source: https://mxr.mozilla.org/mozilla-beta/source/gfx/2d/Matrix.h#465
+	//		      _13			 _23		_43		 _33
+	var z = -(pPoint[0] * pMatrix3D[2] + pPoint[1] * pMatrix3D[6] + pMatrix3D[14]) / pMatrix3D[10];
+	return this.multiply4x4by1x4_(pMatrix3D, [pPoint[0], pPoint[1], z, 1]);
+}*/
+
 
 // the following cannot be class methods, and cannot call data from any classes
 function GOEX_computeIntersectTwoLines_(pL1endpoints, pL2endpoints) {
@@ -1296,13 +1476,13 @@ function GOEX_computeIntersectTwoLines_(pL1endpoints, pL2endpoints) {
 //   evt = undefined
 function GroundOverlayEX_mapDrag_(GOobj) {
 	if (GOobj.clickable_) { this.clickStarted_ = false; }
-	if (GOobj.display_element_.isMapped_() && GOobj.displayMode_ == "Q") {
+	/*if (GOobj.display_element_.isMapped_() && GOobj.displayMode_ == "Q") {
 		// these three lines are a kludge to force the browser to redraw the displayed element 
 		// to fix the fact that transform does not render portions that may be outside the parent map window
-		//GOobj.display_element_.node_.style.display = "none";
-		//var height = GOobj.display_element_.node_.offsetHeight;
-		//GOobj.display_element_.node_.style.display = "";
-	}
+		GOobj.display_element_.node_.style.display = "none";
+		var height = GOobj.display_element_.node_.offsetHeight;
+		GOobj.display_element_.node_.style.display = "";
+	}*/
 }
 function GroundOverlayEX_mapZoomChanged_(GOobj) {
 	GOobj.emplaceProperListeners_();
@@ -1363,6 +1543,7 @@ function GroundOverlayEX_imageMouseOut_(GOobj, evt) {
 }
 function GroundOverlayEX_imageMouseDown_(GOobj, evt) {
 	// this happens only once when the mouse button is pressed and held over the displayed element
+	
 	this.clickStarted_ = true;
 	if (GOobj.shouldClickable_(32)) {
 		var info = GOobj.getEventInfo_(evt);
@@ -1474,17 +1655,19 @@ GroundOverlayEX_element_imageLLB.prototype.addToMap_ = function(pImg) {
 	// yes, prepare for the cropping
 	this.img_.style.visibility = 'hidden';
 
-	var cropXleft = Math.round(this.parentGOEX_.cropBase_[0] * this.img_.width / this.parentGOEX_.origImgWidth_);
-	var cropYtop = Math.round(this.parentGOEX_.cropBase_[1] * this.img_.height / this.parentGOEX_.origImgHeight_);
-	var cropWidth = Math.round(this.parentGOEX_.cropBase_[2] * this.img_.width / this.parentGOEX_.origImgWidth_);
-	var cropHeight = Math.round(this.parentGOEX_.cropBase_[3] * this.img_.height / this.parentGOEX_.origImgHeight_);
+	var cropXleft = Math.round(this.parentGOEX_.cropBase_[0] * this.img_.naturalWidth / this.parentGOEX_.origImgWidth_);
+	var cropYtop = Math.round(this.parentGOEX_.cropBase_[1] * this.img_.naturalHeight / this.parentGOEX_.origImgHeight_);
+	var cropWidth = Math.round(this.parentGOEX_.cropBase_[2] * this.img_.naturalWidth / this.parentGOEX_.origImgWidth_);
+	var cropHeight = Math.round(this.parentGOEX_.cropBase_[3] * this.img_.naturalHeight / this.parentGOEX_.origImgHeight_);
 
-	if (cropXleft >= this.img_.width || cropYtop >= this.img_.height) { this.parentGOEX_.overCropped_ = true; }
-	if (cropWidth > (this.img_.width - cropXleft) || cropHeight > (this.img_.height - cropYtop)) { this.parentGOEX_.overCropped_ = true; }
+	if (cropXleft >= this.img_.naturalWidth || cropYtop >= this.img_.naturalHeight) { this.parentGOEX_.overCropped_ = true; }
+	if (cropWidth > (this.img_.naturalWidth - cropXleft) || cropHeight > (this.img_.naturalHeight - cropYtop)) { this.parentGOEX_.overCropped_ = true; }
 
 	this.canvas_ = document.createElement('canvas');
 	this.canvas_.width = cropWidth;
 	this.canvas_.height = cropHeight;
+	this.canvas_.naturalWidth = cropWidth;		// these are used in other methods that don't distinguish between images and canvas
+	this.canvas_.naturalHeight = cropHeight;
 	this.canvas_.style.borderStyle = 'solid';
  	this.canvas_.style.borderWidth = '0px';
 	this.canvas_.style.borderColor = 'Transparent';
@@ -1573,14 +1756,14 @@ GroundOverlayEX_element_imageLLB.prototype.doDrawLLB_ = function(pNonBorderLeft,
 	this.nonborderLeft_ = pNonBorderLeft;
 	this.nonborderTop_ = pNonBorderTop;
 	this.node_.style.left = (pNonBorderLeft - this.node_.clientLeft) + "px";
-	this.node_.style.top = (pNonBorderTop - this.node_.clientLeft) + "px";
+	this.node_.style.top = (pNonBorderTop - this.node_.clientTop) + "px";
 }
 GroundOverlayEX_element_imageLLB.prototype.doDrawLLQ_ = function(pCorners) {
 	// ignored for a LatLngBounds-mode element
 	console.log("GOEX_el_imgLLB.doDrawLLQ_ SHOULD NOT HAVE BEEN CALLED");
 }
 GroundOverlayEX_element_imageLLB.prototype.setRotation_ = function() {
-	this.rot_ = -(this.parentGOEX_.rotate_);	// browser expects degrees clockwise
+	this.rot_ = -(this.parentGOEX_.rotateCCW_);	// browser expects degrees clockwise
 	var rotStr = 'rotate(' + this.rot_ + 'deg)';
 	this.node_.style["-webkit-transform"] = rotStr;	  
 	this.node_.style["-ms-transform"] = rotStr;
@@ -1594,23 +1777,23 @@ GroundOverlayEX_element_imageLLB.prototype.doZindex_ = function() {
 	var z = this.parentGOEX_.getEffectiveZindex();
 	this.node_.style.zIndex = String(z);
 }
-GroundOverlayEX_element_imageLLB.prototype.getBoundsLeftTopXY_ = function() {
+GroundOverlayEX_element_imageLLB.prototype.getBoundsLeftTopXYdiv_ = function() {
 	return [this.node_.offsetLeft + this.node_.clientLeft, this.node_.offsetTop + this.node_.clientTop];
 }
 GroundOverlayEX_element_imageLLB.prototype.getBoundsSize_ = function() {
 	// return: width, height
 	return [this.node_.clientWidth, this.node_.clientHeight];
 }
-GroundOverlayEX_element_imageLLB.prototype.getPositionXY_ = function() {
+GroundOverlayEX_element_imageLLB.prototype.getPositionXYdiv_ = function() {
 	// position is in the mapping context used to align this image and related editing elements
 	var centerX = (this.node_.offsetLeft + this.node_.clientLeft) + Math.round(this.node_.clientWidth / 2);
 	var centerY = (this.node_.offsetTop + this.node_.clientTop) + Math.round(this.node_.clientHeight / 2);
 	return [centerX, centerY];
 }
-GroundOverlayEX_element_imageLLB.prototype.getCornersXY_ = function() {
+GroundOverlayEX_element_imageLLB.prototype.getCornersXYdiv_ = function() {
 	// calculate the rectangular rotated nonbordered corners; order is: BL, BR, TR, TL
 	var theResults = [];
-	var center = this.getPositionXY_();
+	var center = this.getPositionXYdiv_();
 
 	var posX = (this.node_.offsetLeft + this.node_.clientLeft);
 	var posY = (this.node_.offsetTop + this.node_.clientTop)  + this.node_.clientHeight;
@@ -1637,7 +1820,7 @@ GroundOverlayEX_element_imageLLB.prototype.getCornersXY_ = function() {
 }
 GroundOverlayEX_element_imageLLB.prototype.getBoundsBox_ = function() {
 	// calculate the boundsbox enclosing corners; return is x,y & x,y & width,height:  BL, TR, size
-	var corners = this.getCornersXY_();
+	var corners = this.getCornersXYdiv_();
 	
 	var theResults = [];
 	var point1 = [0,0];
@@ -1721,8 +1904,8 @@ GroundOverlayEX_element_imageLLQ.prototype.addToMap_ = function(pImg) {
 		this.addToMapLayer_();
 
 		// store the initial size of the untransformed image
-		this.nonborderWidth_ = this.node_.width;
-		this.nonborderHeight_ = this.node_.height;
+		this.nonborderWidth_ = this.node_.naturalWidth;
+		this.nonborderHeight_ = this.node_.naturalHeight;
 
 		// set the transform default for rotation
 		this.node_.style["-webkit-transformOrigin"] = "0 0";	  
@@ -1738,17 +1921,19 @@ GroundOverlayEX_element_imageLLQ.prototype.addToMap_ = function(pImg) {
 	// yes, prepare for the cropping
 	this.img_.style.visibility = 'hidden';
 
-	var cropXleft = Math.round(this.parentGOEX_.cropBase_[0] * this.img_.width / this.parentGOEX_.origImgWidth_);
-	var cropYtop = Math.round(this.parentGOEX_.cropBase_[1] * this.img_.height / this.parentGOEX_.origImgHeight_);
-	var cropWidth = Math.round(this.parentGOEX_.cropBase_[2] * this.img_.width / this.parentGOEX_.origImgWidth_);
-	var cropHeight = Math.round(this.parentGOEX_.cropBase_[3] * this.img_.height / this.parentGOEX_.origImgHeight_);
+	var cropXleft = Math.round(this.parentGOEX_.cropBase_[0] * this.img_.naturalWidth / this.parentGOEX_.origImgWidth_);
+	var cropYtop = Math.round(this.parentGOEX_.cropBase_[1] * this.img_.naturalHeight / this.parentGOEX_.origImgHeight_);
+	var cropWidth = Math.round(this.parentGOEX_.cropBase_[2] * this.img_.naturalWidth / this.parentGOEX_.origImgWidth_);
+	var cropHeight = Math.round(this.parentGOEX_.cropBase_[3] * this.img_.naturalHeight / this.parentGOEX_.origImgHeight_);
 
-	if (cropXleft >= this.img_.width || cropYtop >= this.img_.height) { this.parentGOEX_.overCropped_ = true; }
-	if (cropWidth > (this.img_.width - cropXleft) || cropHeight > (this.img_.height - cropYtop)) { this.parentGOEX_.overCropped_ = true; }
+	if (cropXleft >= this.img_.naturalWidth || cropYtop >= this.img_.naturalHeight) { this.parentGOEX_.overCropped_ = true; }
+	if (cropWidth > (this.img_.naturalWidth - cropXleft) || cropHeight > (this.img_.naturalHeight - cropYtop)) { this.parentGOEX_.overCropped_ = true; }
 
 	this.canvas_ = document.createElement('canvas');
 	this.canvas_.width = cropWidth;
 	this.canvas_.height = cropHeight;
+	this.canvas_.naturalWidth = cropWidth;		// these are used in other methods that don't distinguish between images and canvas
+	this.canvas_.naturalHeight = cropHeight;
 	this.canvas_.style.borderStyle = 'solid';
  	this.canvas_.style.borderWidth = '0px';
 	this.canvas_.style.borderColor = 'Transparent';
@@ -1759,7 +1944,7 @@ GroundOverlayEX_element_imageLLQ.prototype.addToMap_ = function(pImg) {
 	var ctx = this.canvas_.getContext('2d');
 
 	// to account for persistent and longterm Firefox bugs in their matrix3d transform, need to add a transparent border to LLQ images
-	if (navigator.userAgent.toLowerCase().indexOf('firefox') > -1) { this.canvas_.style.borderWidth = '1px'; }
+	if (this.parentGOEX_.whichBrowser_() == "F") { this.canvas_.style.borderWidth = '1px'; }
 
 	// note: occasionally the canvas drawImage will fail with "NS_ERROR_NOT_AVAILABLE" because Firefox stupidly triggers on the OnLoad callback
 	// BEFORE the image has actually downloaded.  A bug identified in 2010 and 5 years later never fixed.
@@ -1788,8 +1973,8 @@ GroundOverlayEX_element_imageLLQ.prototype.addToMap_ = function(pImg) {
 	this.addToMapLayer_();
 
 	// store the initial size of the untransformed image
-	this.nonborderWidth_ = this.node_.width;
-	this.nonborderHeight_ = this.node_.height;
+	this.nonborderWidth_ = this.node_.naturalWidth;
+	this.nonborderHeight_ = this.node_.naturalHeight;
 
 	// set the transform default for rotation
 	this.node_.style["-webkit-transformOrigin"] = "0 0";	  
@@ -1869,14 +2054,14 @@ GroundOverlayEX_element_imageLLQ.prototype.doZindex_ = function() {
 	var z = this.parentGOEX_.getEffectiveZindex();
 	this.node_.style.zIndex = String(z);
 }
-GroundOverlayEX_element_imageLLQ.prototype.getBoundsLeftTopXY_ = function() {
+GroundOverlayEX_element_imageLLQ.prototype.getBoundsLeftTopXYdiv_ = function() {
 	return [this.node_.offsetLeft + this.node_.clientLeft, this.node_.offsetTop + this.node_.clientTop];
 }
 GroundOverlayEX_element_imageLLQ.prototype.getBoundsSize_ = function() {
 	// return: width, height
 	return [this.node_.clientWidth, this.node_.clientHeight];
 }
-GroundOverlayEX_element_imageLLQ.prototype.getPositionXY_ = function() {
+GroundOverlayEX_element_imageLLQ.prototype.getPositionXYdiv_ = function() {
 	// for a LatLngQuad, the position is the center of the bounding box of its corners
 	var bb = this.getBoundsBox_();
 	var centerX = bb[0][0] + Math.round(bb[2][0] / 2);
@@ -1884,7 +2069,10 @@ GroundOverlayEX_element_imageLLQ.prototype.getPositionXY_ = function() {
 	bb = null;
 	return [centerX, centerY];
 }
-GroundOverlayEX_element_imageLLQ.prototype.getCornersXY_ = function() {
+GroundOverlayEX_element_imageLLQ.prototype.getCenterXYimg_ = function() {
+	return [Math.round(this.node_.clientWidth / 2), Math.round(this.node_.clientHeight / 2)];
+}
+GroundOverlayEX_element_imageLLQ.prototype.getCornersXYdiv_ = function() {
 	// calculate the rectangular rotated corners; order is: BL, BR, TR, TL
 	return this.corners_;
 }
@@ -1912,29 +2100,6 @@ GroundOverlayEX_element_imageLLQ.prototype.doResetNodeSizePosition_ = function()
 	// in order to handle Firefox transform bugs for large images, first resize then move the source (non-transformed) 
 	// node to the center of the map DIV
 	// this gets called everytime GOEX draw() gets called so be more explicit about garbage collection
-	/*var mapSize = this.parentGOEX_.getMapDivSize_();
-	mapSize[0] =  Math.round(mapSize[0] * .75);
-	mapSize[1] =  Math.round(mapSize[1] * .75);
-
-	if (this.node_.width > mapSize[0] || this.node_.height > mapSize[1] || 
-	    this.nonborderWidth_ > mapSize[0] || this.nonborderHeight_ > mapSize[1]) {
-		intWidth1 = mapSize[0];
-		intHeight1 = Math.round(this.node_.height * (intWidth1 / this.node_.width));
-
-		intHeight2 = mapSize[1];
-		intWidth2 = Math.round(this.node_.width * (intHeight2 / this.node_.height));
-
-		if (intHeight1 <= mapSize[1]) {
-			this.nonborderWidth_ = intWidth1;
-			this.nonborderHeight_ = intHeight1;
-		} else {
-			this.nonborderWidth_ = intWidth2;
-			this.nonborderHeight_ = intHeight2;
-		}
-	}
-	mapSize = null;
-	this.node_.style.width = this.nonborderWidth_ + "px";
-	this.node_.style.height = this.nonborderHeight_ + "px";*/
 
 	var mapCenter = this.parentGOEX_.getCenterOfMapDiv_();
 	this.nonborderLeft_ = mapCenter[0] - Math.round(this.node_.clientWidth / 2);
@@ -2086,10 +2251,12 @@ function LatLngQuad(blLatLng, brLatLng, trLatLng, tlLatLng) {
 LatLngQuad.prototype['destroy'] = LatLngQuad.prototype.destroy;
 LatLngQuad.prototype.destroy = function() {
 	this.valid_ = false;
-	this.LatLngs_[0] = null;
-	this.LatLngs_[1] = null;
-	this.LatLngs_[2] = null;
-	this.LatLngs_[3] = null;
+	if (this.LatLngs_ != null) {
+		this.LatLngs_[0] = null;
+		this.LatLngs_[1] = null;
+		this.LatLngs_[2] = null;
+		this.LatLngs_[3] = null;
+	}
 	this.LatLngs_ = null;
 	this.intersectOfBimedians_ = null;
 }
@@ -2180,6 +2347,11 @@ LatLngQuad.prototype.toUrlValue = function(pPrecision) {
 		results += this.LatLngs_[i].toUrlValue(pPrecision);
 	}
 	return results;
+}
+LatLngQuad.prototype['clone'] = LatLngQuad.prototype.clone;
+LatLngQuad.prototype.clone = function() {
+	if (!this.valid_) return null;
+	return new LatLngQuad(this.LatLngs_[0], this.LatLngs_[1], this.LatLngs_[2], this.LatLngs_[3]);
 }
 LatLngQuad.prototype.calculateBimedianCenter_ = function() {
 	// see GroundOverlayEX_element_imageLLQ.prototype.computeCenterOfQuad_() for notes
