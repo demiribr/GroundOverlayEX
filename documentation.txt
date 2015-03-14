@@ -1,7 +1,7 @@
 Defines primary javascript classes:  GroundOverlayEx, GroundOverlayEX_mgr, LatLngQuad, ZoomArray, ZoomEntryZoom, ZoomEntryAlt_ft, ZoomEntryAlt_m
 Classes are extended from google.maps.OverlayView (GroundOverlayEx) and google.maps.MVCObject (all the rest)
 Libraries needed:  (javascript) Google Maps API V3, Numeric.js
-Version 1.41
+Version 1.42
 Attribution: Mike Maschino, Google Maps API
 License: MIT License (see License.txt file)
 
@@ -50,6 +50,7 @@ LatLngQuad(google.maps.LatLng:bottom_Left,
 Methods:
 --------
 .destroy()                                      none                      release all internally stored objects
+.clone()                                 	LatLngQuad  		  returns a new object that is a clone of the current LatLngQuad object
 .isEmpty()                                      Boolean                   true=the object had a properly passed parameters
 .getBottomLeft()                                google.maps.LatLng        returns what was passed in the constructor
 .getBottomRight()                               google.maps.LatLng        returns what was passed in the constructor
@@ -546,59 +547,70 @@ function a_GOEX_was_doubleclicked(mouseEvent, thegoex) {
 =============================================
 Using Editing in GroundOverlayEX for Map Apps
 =============================================
-If an application developer wants to allow in-line editing of images on their map for some reason, the GroundOverlayEX class offers mechanisms to do that.  First
-the developer should choose which of the two ways they want editing mode to be initiated.
+If an application developer wants to allow in-line editing of images on their map for some reason, the GroundOverlayEX class offers mechanisms to do that. 
+The first task is to ensure the application is using the proper .js library file.  To gain access to the editing features, the "GroundOverlayEXeditable.js" file
+must be used.
+
+Second the developer should choose which of the two ways they want editing mode to be initiated.
 1. 	End-user control-rightclicks on a GroundOverlayEX image that has been configured as "editable: true".  An event can be listened to allow the application to know
 	when editing has been initiated.
 2. 	End-user invokes some application control (like a button) or mechanism (like a "properties box") that programatically activates editing of a GroundOverlayEX object. 
 	There is a method the application uses to activate editing.
 
-The second task will be whether to intercept editing changes made in-progress to show intermediate results (such as updated latitude and longitude numbers as the
+The third task will be whether to intercept editing changes made in-progress to show intermediate results (such as updated latitude and longitude numbers as the
 GroundOverlayEX image is being moved.  The class offers events for the application to listen to.
 
-The third task is to provide a means for the end-user to end editing.
+The fourth task is to provide a means for the end-user to end editing.
 1.	If the control-rightclick method of initiation was chosen, then there is an event the application can listen to get a signal when the end-user control-rightclicks 
 	again to end editing.  
 2.	If the application-controlled alternative was chosen, then the end-user would use the application controls to terminate editing, and there is a method the 
 	application uses to end editing.
 
-The final task is to gather the updated geolocation information after editing is completed.  There are various methods the GroundOverlayEX class offers to gather 
-the results of the editing, and store that new geolocation information.
+The final task is to gather the updated geolocation information after editing is completed.  
+1.	If the control-rightclick method of initiation was chosen, then when the end-user performs the control-rightclick, the GroundOverlayEX class offers two ways for the application
+	to know to obtain results.  One alternative is to listen for the "editing-done" event; when that event gets triggered, editing will be done - the geographic information (LatLngs and
+	rotations) will be available, however the image information will have been already lost.  The second alternative is to use the EditableEndingCallback, which will get invoked midway
+	through the end-of-editing shutdown; all the geographic and the image information will be available to the callback.
+2.	If the application-controlled alternative was chosen, then the end-user would use the application controls to terminate editing, and the application utilizes the GroundOverlayEX
+	methods to obtain the results of the edit.  Use of a listener or callback at end-of-edit should not be needed.
+There are various methods the GroundOverlayEX class offers to gather the results of the editing.  Some access the geographic information, and others access the image information.
 
-Editing Methods:					Return		Description
------------------					------		-----------
+Editing Preparation Methods:				Return		Description
+----------------------------				------		-----------
+.supportsEditing()					Boolean		return: will always return "true" when using the GroundOverlayEXeditable.js file
 .getEditable()						Boolean		return: true=potentially allow the passed parameter url image to be edited (zoomArray URLs are ignored); false=no editing allowed
 .setEditable(Boolean)					Boolean		passed: true=potentially allow the passed parameter url image to be edited (zoomArray URLs are ignored); false=no editing allowed; return: true=set was successful
 .setEditableForbidNonrect(Boolean:forbid)		Boolean		passed: true=do not allow the conversion of LatLngBounds-mode to LatLngQuad-mode (however those edited that are already LatLngQuad will remain so); return: true=set was successful
+.setEditableEndingCallback(Function:callback)		Boolean		the callback function will get invoked at end-of-editing so the application can capture image information; the callback will be passed one parameter which is the GroundOverlayEX object that is ending its editing; return: true=callback was stored
 .getDoEditing()						Boolean		return: true=activate editing of the displayed image; control-right-clicking on the image will also toggle editing
 .setDoEditing(Boolean)					Boolean		passed: true=activate editing of the displayed image; control-right-clicking on the image will also toggle editing; return true=set was successful
-.editingDoRevertImage()					Boolean		Resets image back to its initial state before editing; end-user can use an alt-rightclick to trigger this as well
-.setEditingAidsVisible(Number:aids,Boolean:visible)	Boolean		Aids available: 1=effective-center spot, 2=for LLQ-mode center-diagonals spot, 4=LLB-mode non-rotated image, 8=regionBounds; the indicated aids will be set shown or hidden depending on the 'visible' parameter
 
 
 Obtaining the results of an edit:
 Baseline Geolocation Results Methods (see the main GroundOverlayEX class' definitions)
 --------------------------------------------------------------------------------------
-.getDisplayMode()								determining whether to get primary geo-location information from .getBounds() or .getLatLngQuad()
-.getCenter()									gets the new image center latitude and longitude
-.getBounds()									gets the new image non-rotated LatLngBounds; only available when in LatLngBounds-mode; will return null when in LatLngQuad-mode
-.getRotation()									gets the new rotation [only applicable when in LatLngBounds-mode]
-.getLatLngQuad()								gets the new LatLngQuad; this information is available in BOTH LatLngQuad-mode and LatLngBounds-mode during editing; when in LatLngBounds mode, these 
-											corner latitudes and longitudes are usually quite inaccurate unless the image's camera was near perfect-vertical 
-											with no tilt distortion on the image
-.getLatLngType()								"R"=approximate LatLngs based on the LatLngBounds-mode corners, "N"=accurate LatLngs based upon the LatLngQuad-mode corners
+.getDisplayMode()							determining whether to get primary geo-location information from .getBounds() or .getLatLngQuad()
+.getCenter()								gets the new image center latitude and longitude
+.getBounds()								gets the new image non-rotated LatLngBounds; only available when in LatLngBounds-mode; will return null when in LatLngQuad-mode
+.getRotation()								gets the new rotation [only applicable when in LatLngBounds-mode]
+.getLatLngQuad()							gets the new LatLngQuad; this information is available in BOTH LatLngQuad-mode and LatLngBounds-mode during editing; when in LatLngBounds mode, these 
+										corner latitudes and longitudes are usually quite inaccurate unless the image's camera was near perfect-vertical 
+										with no tilt distortion on the image
+.getLatLngQuadType()							"R"=approximate LatLngs based on the LatLngBounds-mode corners, "N"=accurate LatLngs based upon the LatLngQuad-mode corners
 
-Additional Editing Results Methods 			Return			Description
-----------------------------------			------			-----------
-.getEditedIsCropped()					Boolean			true=all information is relative to the *cropped* image, false=no cropping was done
-.getEditedImageInfo()					Array of Numbers	returns the following information in the array:
+Image and Editing Results Methods 			Return			Description
+---------------------------------			------			-----------
+.editingDoRevertImage()					Boolean			Resets image back to its initial state before editing; end-user can use an alt-rightclick to trigger this as well
+.setEditingAidsVisible(Number:aids,Boolean:visible)	Boolean			Aids available: 1=effective-center spot, 2=for LLQ-mode center-diagonals spot, 4=LLB-mode non-rotated image, 8=regionBounds; the indicated aids will be set shown or hidden depending on the 'visible' parameter
+.getEditingIsCropped()					Boolean			true=all information is relative to the *cropped* image, false=no cropping was done
+.getEditingImageInfo()					Array of Numbers	returns the following information in the array:
 										[0],[1]=Original width,height; [2],[3]=Cropped fromLeft,fromBottom;
 										[4],[5]=Cropped toWidth,toHeight; [6],[7]=Current width,height;
-										[8],[9]=Bounds left,top; [10],[11]=Bounds width,height;
-										[12],[13]=BoundsBox left,top; [14],[15]=BoundsBox width,height;
-										[16],[17]=Current center x,y; [18],[19]=Current diagonals x,y;
-										[20],[21]=Corner bottom-left X,y; [22],[23]=Corner bottom-right x,y;
-										[24],[25]=Corner top-right X,y; [26],[27]=Corner top-left x,y;
+										[8],[9]=Bounds MapDiv left,top; [10],[11]=Bounds width,height;
+										[12],[13]=BoundsBox MapDiv left,top; [14],[15]=BoundsBox width,height;
+										[16],[17]=Current center MapDiv x,y; [18],[19]=Current diagonals MapDiv x,y;
+										[20],[21]=Corner bottom-left MapDiv X,y; [22],[23]=Corner bottom-right MapDiv x,y;
+										[24],[25]=Corner top-right MapDiv X,y; [26],[27]=Corner top-left MapDiv x,y;
 										[28]=effective rotation
 										Note: all are based upon the passed parameter url image;
 										Note: Original and Cropped are non-rotated and non-transformed; 
@@ -610,18 +622,21 @@ Additional Editing Results Methods 			Return			Description
 										  Corners of rotated CUrrent Image are x,y relative to the origin 0,0 of the top-left of Box (this is aligned with the getLatLngQuad() method);
 										  Effective rotation is either the true rotation for a LatLngBounds-mode, or a calculated effective rotation for a LatLngQuad-mode
 
+Events during Editing notes:
+	Events			Description
+	------			-----------
+	editing_started		editing has been initiated (either by the end-user doing a control-rightclick or by .setDoEditing(true) method)
+	position_changing 	the image's center is being moved on the map (the application will get a stream of events)
+	shape_changing 		the image's edges, corners, or rotation are being changed on the map (the application will get a stream of events)
+	editing_done		editing has completed (either the end-user did another control-rightclick or by .setDoEditing(false) method); only geographic results are will be available
+	editing_reverted	editing has been reverted back to its inital state (either the end-user using alt-rightclick or by .editingDoRevertImage() method)
+Note: all the above events are provided with one passed parameter: the GOEX object that triggered the event
 
-Events			Description
-------			-----------
-editing_started		editing has been initiated (either by the end-user doing a control-rightclick or by .setDoEditing(true) method)
-position_changing 	the image's center is being moved on the map (the application will get a stream of events)
-shape_changing 		the image's edges, corners, or rotation are being changed on the map (the application will get a stream of events)
-editing_done		editing has completed (either the end-user did another control-rightclick or by .setDoEditing(false) method)
-editing_reverted	editing has been reverted back to its inital state (either the end-user using alt-rightclick or by .editingDoRevertImage() method)
-
-Note: During the editing process, with the "clickable" passed parameter set to true, all the events will be passed, but should not be used to affect the editing 
+During the editing process, with the "clickable" passed parameter set to true, all the events will be passed, but should not be used to affect the editing 
 process.  And the following additional events are triggered (the "clickable" passed parameter need not be present).  The GroundOverlayEx object is provided 
 as a passed parameter.
+
+All events are passed to the GroundOverlayEX_mgr as well, allowing the application to listen to just the manager object instead of each individual GroundOverlayEX object.
 
 
 Code example:  control-rightclick initiated editing without using cropping or a ZoomArray, and using the GroundOverlayEx manager
@@ -694,6 +709,7 @@ function GOEX_editing_click(theGOEX, evt, imageX, imageY, lat, lng) {
 }
 function GOEX_editing_done(theGoex) {
 	// example usage: extract a set of geolocation information from the now updated GroundOverlayEX object and store the results in some database
+	// remember, only geographic/rotation results are available for the "editing_done" event alternative
 	var llb,llq = null;
 	var rotate = 0;
 	if (theGoex.getDisplayMode() == "B") {
@@ -709,4 +725,340 @@ function GOEX_editing_done(theGoex) {
 	:
 	: code to store all this new information into a database, using theGoex.id_ as the key to locate the proper record to update
 	:
+}
+
+
+=========================================================
+Using Editing in GroundOverlayEX for GeoLocation Web-apps
+=========================================================
+An application developer can use this class within a Geolocation web-app.  This type of web-app would allow display of non-geolocated images such that the end-user positions and 
+sizes the image over a map to create the geolocation information.  Or to adjust images that have existing geolocation information.  Normally only one image (and thus just one object instance
+of the GroundOverlayEX class) would be shown on the web-app.
+
+All the information presented in the prior section on editing in a map display app are applicable to a geolocation app.
+
+To support a geolocation web-app, some additional methods are provided:
+
+Editing Preparation Methods:						Return			Description
+----------------------------						------			-----------
+.setEditableImageLoadedCallback(Function:callback)			Boolean			the callback function will get invoked when the to-be-edited image has successfully loaded; the callback will be passed one parameter which is the GroundOverlayEX object that has completed the load; return: true=callback was stored
+.getEditableIsImageLoaded()						Boolean			true=image has loaded, false=image has not yet downloaded
+.editableLoadAllImages()						Boolean			forces the download of all images in the passed ZoomArray (such that they can be used to get information about the sub-images in later calls); true=loads were initiated
+.setEditableInitialLLBSizeAndPosition(Number:imageWidth, Number:imageHeight, Boolean:sizesAreMax, google.maps.LatLng:initialLatLng, Number:initialImageX, Number:initialImageY)
+									Boolean			This method allows the application to display a non-geolocated image (that does not yet have a Bounds or a LatLngQuad);
+												The image is sized as specified in the passed parameters: 
+												    if sizesAreMax=false then the image is set to the exact sizes of passed parameters imageWidth and imageHeight;
+												    if sizesAreMax=true then whichever of the image's width are height are smaller is set of the appropriate passed value, and the other axis is proportionally resized to maintain the aspect ratio
+												The map is panned to the InitialLatLng value.
+												Then the image is placed at the InitialLatLng value:
+													if both initialImageX and initialImageY are >= 0 and on the image's original-image-size, then the image coordinate {initialImageX,initialImageY} is placed at initialLatLng
+													otherwise or if initialImageX and initialImageY are both -1, then the image's center is placed at InitialLatLng
+
+Editing Image Manipulation Methods:
+------------------------------------
+.setEditingPinImageToMap(Boolean:pinToMap)				Boolean			pinToMap=true then dragging of the image on the map is turned off such that dragging the image drags the entire map; pinToMap=false then the image drags separately from the map
+.editingGotoImageCenterToLatLng(google.maps.LatLng:moveToLatLng)	Boolean			the image's center is panned on the map to the indicated LatLng coordinates; true=panning was performed
+.setEditingRotation(Number:rotation)					Boolean			the LLB-mode only image's rotation is changed to the passed value; true=rotation was changed
+.setEditingDeltaImageResizing(Number:WidthPixelsToResize, Number:heightPixelsToResize)		the LLB-mode only image's width and height are separately incremented (+ numbers) or decremented (- numbers) by the indicated pixels; can be used for non-proportional resizing
+.setEditingDeltaImageProportionalResizing(Number:pixelsToResize)	Boolean			the LLB-mode only image's width and height are simultaneously proportionally resized; whichever of width or height are SMALLER gets the passed number of pixels added (+ number) 
+												or subtracted (- number), the other (longer) axis gets a proportionally larger increase/decrease that maintains the aspect ratio of the image
+Editing Results Methods:
+------------------------
+.getEditingCropResults_ZoomArray(Number:zoomArrayIndex)			Array of Numbers	returns cropping information proportionally resized for the selected image in the ZoomArray; [0]=cropFromLeft, [1]=cropFromBottom, [2]=cropToWidth, [3]=cropToHeight
+.getEditingCurrImagePointFromLatLng(google.maps.LatLng:LatLngToLocate)	Array of Numbers	given the passed LatLng, its position on the current transformed image is calculated in original-image-sized X,Y coordinates; if the passed LatLng is off the image then null is returned
+.getEditingCurrImageLatLngFromImagePoint(Number:imageX, Number:imageY)	google.maps.LatLng	given the passed original-image-sized X,Y coordinates, the corresponding LatLng is calculated on the transformed image; if the X,Y coordinates are off the original-image-size then null is returned
+
+
+
+Initializing and Loading images to-be-edited in a geolocation web-app is a bit more complex than the example code shown for a display map editing capability.  
+Due to the various asynchronous natures of map loading, image loading, and image displaying, more use of callbacks and one-time listeners are required for bug-free operation.
+And there may be numerous external controls used to manipulate the image in addition to using mouse-editing.  Additional mouse controls (such as the scroll wheel) might also be desired
+to be used for editing purposes (rather than just map zooming).  Since this class has been implemented in at least one Geolocation web-app, all these features are possible with the
+existing class.
+
+
+Code example for only non-geolocated images:  	
+============================================		
+This code is not a fully workable example, but shows various snippets of what needs to be accomplished. 
+There are many other ways to setup a geolocation web-app tool, including one web-app that can edit both geolocated and nongeolocated images.
+In this example, 
+a. the end-user enters in limited information known about the image (at least its URL and some initial LatLng), then presses the "Load Image" button.
+b. then they manipulate the image with both mouse controls and some screen controls.
+c. the end-user does not "end editing", but rather pushes a "Get Results" button to get the results of the editing.
+d. then the end-user enters new data for the next image and presses the "Load Image" button again.
+
+
+HTML - example only - this would look terrible on a real browser window
+====
+<body onload="initPage()">
+
+<div id="map_canvas" style="border: 1px solid white; position: relative;"></div>
+
+<div id="controls">
+<button id="controls_CenterButton" type="button" onclick="GotoMapAndImageToCenter()" style="width:105px">Recenter</button>
+<button id="controls_ImagePinButton" type="button" onclick="TogglePinning()" style="width:105px">Unpinned</button>
+<button id="controls_GrowButton" type="button" onclick="ResizeImageProportional(10)" style="width:105px">Grow</button>
+<button id="controls_ShrinkButton" type="button" onclick="ResizeImageProportional(-10)" style="width:105px">Shrink</button>
+<button id="controls_RevertButton" type="button" onclick="RevertImage()" style="width:105px">Revert Image</button><br>
+Base opacity: <input type="range" name="controls_baseOpacity" id="controls_baseOpacity" onInput="AdjustTransparency()" onChange="AdjustTransparency()" min="0" max="10" step=".1" value="10" style="width:200px">
+</div>
+
+<div id="inputs">
+Image URL: <input name="input_ImageURL" id="input_imageURL" size="100" maxlength="1024"><br>
+Image Center LL: <input name="input_Lat_center" id="input_Lat_center" size="10" maxlength="10">, <input name="input_Lon_center" id="input_Lon_center" size="10" maxlength="10"><br>
+Controlpoint LL: <input name="input_Lat_control" id="input_Lat_control" size="10" maxlength="10">, <input name="input_Lon_control" id="photoID_Lon_maincity" size="10" maxlength="10"><br>
+CropFrom Left,Bottom: <input name="input_CropX" id="input_CropX" size="6" maxlength="10" value="0">, <input name="input_CropY" id="input_CropY" size="6" maxlength="10" value="0"><br>
+CropTo Width,Height: <input name="input_CropWidth" id="input_CropWidth" size="6" maxlength="10" value="0">, <input name="input_CropHeight" id="input_CropHeight" size="6" maxlength="10" value="0"><br>
+Rotate: <input name="input_Rotate" id="input_Rotate" size="6" maxlength="10" value="0"><br>
+MapZoom: <input name="input_MapZoom" id="input_MapZoom" size="2" maxlength="2" value="0"><br>
+<button id="input_LoadImage" type="button" onclick="LoadImage()" style="width:105px">Load Image</button>
+</div>
+
+<div id="results">
+<button id="results_getButton" type="button" onclick="GetResultsButton()" style="width:105px">Get Results</button><br>
+<span id="results1"></span><br>
+<span id="results2"></span>
+</div>
+</body>
+
+
+Javascript - note that of course Google Maps API V3 javascript library must be loaded, as well as the Numeric library, and of course the GroundOverlayEXeditable library
+==========
+var map = null;
+var goex = null;
+var InitialLL = null;
+var ControlLL = null;
+var Marker = null;
+var PinImageToMap = false;
+var BaseOpacity = 10;
+var Listener1 = null;
+var Listener2 = null;
+var Listener3 = null;
+
+// initialize functions upon page being fully loaded
+function initPage() {
+	var initialLatLng=new google.maps.LatLng(20,0);	// or where-ever; this will get panned once an image is loaded
+
+	// use whichever map options the app developer desires, the below are just examples
+	var mapOptions={
+		zoom: 3,
+		center: initialLatLng,
+		mapTypeId: google.maps.MapTypeId.HYBRID,
+		navigationControl: true,
+		mapTypeControl: true,
+		rotateControl: true,
+		scaleControl: true,
+		zoomControl: true,
+		scrollwheel: false,			// prevents scroll-wheel from map zooming; maybe want to do this or not, or give the end-user a button to choose for themselves
+		disableDoubleClickZoom: true };		// prevents double-click on map from zooming-in which can be annoying for a geolocation web-app
+	map = new google.maps.Map(document.getElementById("map_canvas"), mapOptions);
+	//google.maps.event.addListenerOnce(map, 'tilesloaded', mapReady);	// this can be used if some post-map-initialized logic is needed
+}
+
+// the end-user has filled in appropriate input fields and wants to load an image
+function loadImage() {
+	// load image stage 1
+
+	: there should be code here to validate all the input fields before doing anything, and presenting alerts for bad inputs
+	: at a minimum, the input_ImageURL, input_Lat_center, and input_Lon_center fields must have valid values
+	: assume a function-local variable has been created for each validated input field with the same name
+
+	// save the control LatLng for later in a global variable
+	if (ControlLL != null) { ControlLL = null; }	// force a garbage-collection since this function needs to be re-entrant
+	if (input_Lat_control != 0 && input_Lon_control != 0) ControlLL = new google.maps.LatLng(input_Lat_control, input_Lon_control);
+
+	if (input_MapZoom == 0) map.setZoom(11);	// this map zoom default is arbitrary; use whatever seems appropriate
+	else map.setZoom(input_MapZoom);
+
+	if (InitialLL != null) { InitialLL = null; }	// force a garbage-collection since this function needs to be re-entrant
+	InitialLL = new google.maps.LatLng(input_Lat_center, input_Lon_center);
+	map.panTo(InitialLL);
+
+	// construct the GroundOverlayEX options					
+	var GO_opts = {
+		editable: true,
+		clickable: true,
+		cropFromLeft: input_CropX,
+		cropFromBottom: input_CropY,
+		cropToWidth: input_CropWidth,
+		cropToHeight: input_CropHeight,
+		rotate: input_Rotate
+	}
+
+	// remember this function needs to be re-entrant; the user may be editing numerous images during a session; always do clean-up activities to avoid memory leaks
+	if (goex != null) { goex.destroy(); goex = null; }	
+	
+	// create the GroundOverlayEX object, record a callback, load it onto the map, and set the one-time listener
+	goex = new GroundOverlayEX(input_ImageURL, null, GO_opts);
+	goex.setEditableImageLoadedCallback( function(theGOEX){imageFinallyLoaded(theGOEX);} );
+	goex.setMap(map);
+	google.maps.event.addListenerOnce(goex, "editing_started", function(theGOEX){imageFinallyDisplayedForEditing(theGOEX);});
+
+	// perform some other initialization tasks to allow map to pan and image load to complete
+	// example: place a marker onto the map of the control point if specified in the inputs
+	if (ControlLL != null) {
+		if (Marker != null) {
+			// remember this function needs to be re-entrant; the user may be editing numerous images during a session; always do clean-up activities to avoid memory leaks
+			Marker.setMap(null);
+			Marker = null;
+		}	
+		Marker = new google.maps.Marker({
+    			position: ControlLL,
+    			icon: {
+      				path: google.maps.SymbolPath.CIRCLE,
+      				scale: 4,
+				fillColor: '#00ff00',
+				strokeColor: '#00ff00' },
+    			draggable: false,
+    			map: map });
+	}
+
+	// add selected DOM event listeners; again don't forget about re-entrance and garbage collection
+	if (Listener1 != null) {google.maps.event.removeListener(Listener1); Listener1 = null; }
+	if (Listener2 != null) {google.maps.event.removeListener(Listener2); Listener2 = null; }
+	if (Listener3 != null) {google.maps.event.removeListener(Listener3); Listener3 = null; }
+	Listener1 = google.maps.event.addListener(goex, "mousedown", function(mouseEvt, theGOEX, imageX, imageY, lat, lon){GOEX_editing_mousedown();} );
+	Listener2 = google.maps.event.addListener(goex, "mouseup", function(mouseEvt, theGOEX, imageX, imageY, lat, lon){GOEX_editing_mouseup();} );
+	Listener3 = google.maps.event.addListener(goex, "mouseout", function(mouseEvt, theGOEX, imageX, imageY, lat, lon){GOEX_editing_mouseout();} );
+}
+
+function imageFinallyLoaded(theGOEX) {
+	// load image stage 2
+	// the below code will set the image's size to 1/4 the size of the map window
+	// then it will place that smaller sized image's center at the center LatLng specified by the end-user;
+	// if a rotation has been pre-defined in the GO_opts then rotation will also be performed last
+	var mapCanvas = document.getElementById("map_canvas");
+	var mWidth = mapCanvas.width(); 
+	var mHeight = mapCanvas.height();
+	theGOEX.setEditableInitialLLBSizeAndPosition(mWidth * .25, mHeight * .25, true, InitialLL, -1, -1);
+
+	// begin the editing process in order to activate all the editing-only methods;
+	// this will auto-map and auto-display the image as well if such as not yet been done;
+	// however there will be a delay due to Google Maps callbacks we have to rely upon the "editing_started" event to finalize the initialization process
+	theGOEX.setDoEditing(true);
+}
+
+function imageFinallyDisplayedForEditing(theGoex) {
+	// load image stage 3 - final
+	// the image is now showing and is editable;
+	// show all the editing aids (though normally this is likely more than is needed; usually it would just be the bimedians centerspot)
+	// aids binary values: 1=true center (LLB&LLQ), 2=diagonal center (LLQ-only), 4=bounds (LLB-only), 8=regionBounds (LLB&LLQ)
+	theGoex.setEditingAidsVisible(15, true);
+
+	// the below will actually toggle-off pin-to-map, then set the opacity to whatever the slider is presently indicating
+	PinImageToMap = true;
+	TogglePinning();
+	AdjustTransparency();
+}
+
+// respond to buttons and controls invoked by the end-user
+function GotoMapAndImageToCenter() {
+	// force the map and the image back to the initial center LatLng
+	map.panTo(InitialLL);
+	if (goex != null) goex.editingGotoImageCenterToLatLng(InitialLL);
+}
+
+function AdjustTransparency() {
+	// adjust the baseline transparency of the image
+	BaseOpacity = Number(document.getElementById("controls_baseOpacity").value) / 10;
+	if (goex != null) goex.setOpacity(BaseOpacity);
+}
+
+function TogglePinning() {
+	// toggle whether to pin the image to the map or not
+	if (PinImageToMap) {
+		PinImageToMap = false;
+		document.getElementById("controls_ImagePinButton").text("Unpinned");
+		if (goex != null) goex.setEditingPinImageToMap(false);
+		
+	} else {
+		PinImageToMap = true;
+		document.getElementById("controls_ImagePinButton").text("Pinned");
+		if (goex != null) goex.setEditingPinImageToMap(true);
+	}
+}
+
+function RevertImageButton() {
+	// revert the image back to its initial state
+	if (goex != null) goex.editingDoRevertImage();
+}
+
+function ResizeImageProportional(pValue) {
+	if (goex != null) goex.setEditingDeltaImageProportionalResizing(pValue);
+}
+
+// respond to selected DOM events
+function GOEX_editing_mousedown() {
+	// make the image more transparent during editing functions
+	if (!PinImageToMap) goex.setOpacity(BaseOpacity * .5);
+}
+
+function GOEX_editing_mouseup() {
+	// restore the end-user set base opacity
+	goex.setOpacity(BaseOpacity);
+}
+
+function GOEX_editing_mouseout() {
+	// restore the end-user set base opacity
+	goex.setOpacity(BaseOpacity);
+}
+
+function GetResultsButton() {
+	if (goex == null) return;
+
+	var results1 = "Geolocation results: "
+	var centerLL = goex.getCenter();
+	results1 += "CenterLL="+centerLL.toString()+"; ";
+
+	if (ControlLL != null) {
+		var iPos = goex.getEditingCurrImagePointFromLatLng(ControlLL);
+		if (iPos != null)  results1 += "ControlLL="+iPos[0].toFixed(0)+","+iPos[1].toFixed(0)+"; ";
+		else  results1 += "ControlLL={offimg}; ";
+		iPos = null;
+	}
+
+	var bounds = goex.getBounds();
+	if (bounds != null) {
+		results1 += "Bounds="+bounds.toString()+"; ";
+		bounds = null;
+	} else {
+		 results1 += "Bounds={none}; ";
+	}
+
+	var rot = goex.getRotation();
+	results1 += "KML Rotation CCW="+rot.toFixed(1)+"; ";
+	
+	var llq = goex.getLatLngQuad();
+	if (llq != null) {
+		if (goex.getLatLngQuadType() == "N") results1 += "QuadNonrect="
+		else if (goex.getLatLngQuadType() == "R") results1 += "QuadRect="
+		else results1 += "Quad="
+		results1 += llq.toString()+"; ";
+		llq = null
+	} else {
+		 results1 += "Quad={none}; ";
+	}
+
+	// [0],[1]=Original width,height; [2],[3]=Cropped fromLeft,fromBottom;
+	// [4],[5]=Cropped toWidth,toHeight; [6],[7]=Current width,height;
+	// [8],[9]=Bounds MapDiv left,top; [10],[11]=Bounds width,height;
+	// [12],[13]=BoundsBox MapDiv left,top; [14],[15]=BoundsBox width,height;
+	// [16],[17]=Current center Img x,y; [18],[19]=Current diagonals Img x,y;
+	// [20],[21]=Current center MapDiv x,y; [22],[23]=Current diagonals MapDiv x,y;
+	// [24],[25]=Corner bottom-left MapDiv X,y; [26],[27]=Corner bottom-right MapDiv x,y;
+	// [28],[29]=Corner top-right MapDiv X,y; [30],[31]=Corner top-left MapDiv x,y
+	// [32] = effective/approximate rotation (deg clockwise)
+	var imageInfo = goex.getEditingImageInfo();
+
+	var results2 = "Image results: "
+	results2 += "Orig W,H="+imageInfo[0].toFixed(0)+","+imageInfo[1].toFixed(0)+"; ";
+	results2 += "Crop Img left,bottom="+imageInfo[2].toFixed(0)+","+imageInfo[3].toFixed(0)+"; ";
+	results2 += "Crop W,H="+imageInfo[4].toFixed(0)+","+imageInfo[5].toFixed(0)+"; ";
+	results2 += "Curr W,H="+imageInfo[6].toFixed(0)+","+imageInfo[7].toFixed(0)+"; ";
+	results2 += "Center Img X,Y="+imageInfo[16].toFixed(0)+","+imageInfo[17].toFixed(0)+"; ";
+	results2 += "HTML rotation CW="+imageInfo[32].toFixed(1)+"; ";
+	imageInfo = null;
+	
+	document.getElementById("results1").text(results1);
+	document.getElementById("results2").text(results2);
 }
